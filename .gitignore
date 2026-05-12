@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+core/app/node_modules/
+
+# Next.js and TypeScript build output
+.next/
+out/
+dist/
+*.tsbuildinfo
+core/app/.next/
+core/app/out/
+core/app/dist/
+core/app/tsconfig.tsbuildinfo
+
+# Electron/package output
+core/dist/
+core/runtime/
+resources/
+locales/
+
+# Runtime binaries copied next to the desktop app
+*.exe
+*.dll
+*.pak
+*.bin
+*.dat
+LICENSES.chromium.html
+vk_swiftshader_icd.json
+version
+
+# Local/editor/system files
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.codex/
+.sbx-denybin/
+.thumbnails/
