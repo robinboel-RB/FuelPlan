@@ -3,7 +3,7 @@
 import {
   CoachInput,
   CoachPlan
-} from "@/lib/mvp/coachModel";
+} from "@/core/coachModel";
 
 interface WatchCoachProps {
   input: CoachInput;

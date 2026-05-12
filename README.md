@@ -8,6 +8,20 @@ core/app
 
 De root bevat ook referentiedocumenten en lokale desktop-build artefacten. Alleen de broncode en kleine documentatiebestanden horen in Git; build-output, `node_modules`, `.next`, `out`, `dist` en losse binaries worden genegeerd.
 
+## Architectuur
+
+De webapp houdt UI, state en domeinlogica gescheiden:
+
+```text
+core/app/src/ui        visuele React componenten
+core/app/src/state     sessie-state en UI-acties
+core/app/src/core      pure berekeningen en business logic
+core/app/src/utils     generieke formatting/parsing
+core/app/src/services  leeg zolang de MVP geen externe services gebruikt
+```
+
+De source of truth voor sportberekeningen is `core/app/src/core/trainingEnergyModel.ts`.
+
 ## Lokaal draaien
 
 ```bash

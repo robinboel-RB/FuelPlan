@@ -1,8 +1,6 @@
 import {
   EnergyOutputMode,
-  FuelingRecommendation,
   SelectedEnergyEngine,
-  TrainingEnergyResult,
   TrainingSegment,
   UserProfile,
   calculateCarbDoseForInterval,
@@ -10,7 +8,7 @@ import {
   calculateHydrationPlan,
   calculateTrainingEnergy,
   generateFuelingRecommendation
-} from "@/lib/fueling/trainingEnergyModel";
+} from "@/core/trainingEnergyModel";
 
 export type Gender = UserProfile["gender"];
 export type EquationOutputMode = EnergyOutputMode;
@@ -72,27 +70,17 @@ export interface CoachPlan {
   zoneLabel: "Z1" | "Z2" | "Z3" | "Z4";
   bodyFatPctUsed: number;
   bodyFatSource: "manual" | "bmi-estimate";
-  leanMassKg: number;
-  fatMassKg: number;
   totalKcal: number;
-  totalKj: number;
   selectedEngine: SelectedEnergyEngine;
   selectedEngineReason: string;
   averageRer: number;
-  averageFuelFactor: number;
   keytelTotalKcal: number;
   minettiTotalKcal: number;
-  efficiencyRatio: number;
-  carbsBurnedG: number;
-  fatBurnedG: number;
   fuelBufferG: number;
   fuelDeficitG: number;
-  recommendedCarbsNowG: number;
   nextFuelActionInMin: number;
   fuelMessage: string;
   energyWarnings: string[];
-  energyResult: TrainingEnergyResult;
-  fuelingRecommendation: FuelingRecommendation;
   carbPerHour: number;
   hydrationPerHour: number;
   carbDoseG: number;
@@ -151,7 +139,6 @@ export const DEFAULT_COACH_INPUT: CoachInput = {
 };
 
 export const SIMULATION_STEP_MIN = 1;
-export const SIMULATION_TOTAL_MIN = 96;
 export const SESSION_START_HOUR = 8;
 export const SESSION_START_MINUTE = 0;
 export const CARB_FIRST_REMINDER_MIN = 25;
@@ -301,27 +288,17 @@ export function calculateCoachPlan(
     zoneLabel: currentSegmentResult.zoneLabel,
     bodyFatPctUsed: energyResult.derived.bodyFatPctUsed,
     bodyFatSource: energyResult.derived.bodyFatSource,
-    leanMassKg: energyResult.derived.leanBodyMassKg,
-    fatMassKg: energyResult.derived.fatMassKg,
     totalKcal: energyResult.totalKcal,
-    totalKj: energyResult.totalKj,
     selectedEngine: energySegmentResult.selectedEngine,
     selectedEngineReason: energySegmentResult.reason,
     averageRer: energyResult.averageRer,
-    averageFuelFactor: energyResult.averageFuelFactor,
     keytelTotalKcal: energyResult.keytelTotalKcal,
     minettiTotalKcal: energyResult.minettiTotalKcal,
-    efficiencyRatio: energyResult.efficiencyRatio,
-    carbsBurnedG: energyResult.totalCarbsBurnedG,
-    fatBurnedG: energyResult.totalFatBurnedG,
     fuelBufferG: fuelingRecommendation.currentFuelBufferG,
     fuelDeficitG: fuelingRecommendation.fuelDeficitG,
-    recommendedCarbsNowG: fuelingRecommendation.recommendedCarbsNowG,
     nextFuelActionInMin: fuelingRecommendation.nextActionInMin,
     fuelMessage: fuelingRecommendation.message,
     energyWarnings: energySegmentResult.warnings,
-    energyResult,
-    fuelingRecommendation,
     carbPerHour,
     hydrationPerHour: hydrationPlan.hydrationPerHourMl,
     carbDoseG,
@@ -452,57 +429,6 @@ function toTrainingSegment(
     carbsConsumedG,
     fluidConsumedMl
   };
-}
-
-export function parseDurationToMinutes(value: string): number | null {
-  const parts = value.trim().split(":").map(Number);
-
-  if (parts.length < 2 || parts.length > 3 || parts.some(Number.isNaN)) {
-    return null;
-  }
-
-  if (parts.length === 2) {
-    const [minutes, seconds] = parts;
-    return minutes + seconds / 60;
-  }
-
-  const [hours, minutes, seconds] = parts;
-  return hours * 60 + minutes + seconds / 60;
-}
-
-export function formatDurationInput(minutesValue: number): string {
-  const totalSeconds = Math.max(0, Math.round(minutesValue * 60));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds
-    .toString()
-    .padStart(2, "0")}`;
-}
-
-export function parsePaceToSpeedMPerMin(value: string): number | null {
-  const minutes = parseDurationToMinutes(value);
-
-  if (minutes === null || minutes <= 0) {
-    return null;
-  }
-
-  return 1000 / minutes;
-}
-
-export function formatPaceInput(speedMPerMin: number): string {
-  if (speedMPerMin <= 0) {
-    return "00:00";
-  }
-
-  const secondsPerKm = Math.round((1000 / speedMPerMin) * 60);
-  const minutes = Math.floor(secondsPerKm / 60);
-  const seconds = secondsPerKm % 60;
-
-  return `${minutes.toString().padStart(2, "0")}:${seconds
-    .toString()
-    .padStart(2, "0")}`;
 }
 
 function resolveWatchOutput({

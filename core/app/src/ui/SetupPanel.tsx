@@ -5,12 +5,15 @@ import {
   CoachInput,
   CoachPlan,
   EquationOutputMode,
-  Gender,
+  Gender
+} from "@/core/coachModel";
+import {
   formatDurationInput,
   formatPaceInput,
+  formatSigned,
   parseDurationToMinutes,
   parsePaceToSpeedMPerMin
-} from "@/lib/mvp/coachModel";
+} from "@/utils/format";
 
 type NumericInputKey =
   | "weightKg"
@@ -26,6 +29,8 @@ type NumericInputKey =
   | "terrainFactor";
 
 type NullableInputKey = "bodyFatPct" | "vo2MaxMlKgMin" | "plannedCarbsPerHour";
+type InputPage = "profile" | "run";
+type InputDraft = ReturnType<typeof createDraftFromInput>;
 
 interface SetupPanelProps {
   value: CoachInput;
@@ -40,47 +45,11 @@ export function SetupPanel({
   onChange,
   onStart
 }: SetupPanelProps) {
-  const [inputPage, setInputPage] = useState<"profile" | "run">("profile");
-  const [draft, setDraft] = useState({
-    weightKg: value.weightKg.toString(),
-    age: value.age.toString(),
-    heartRate: value.heartRate.toString(),
-    bodyFatPct: value.bodyFatPct?.toString() ?? "",
-    heightM: value.heightM.toString(),
-    restingHrBpm: value.restingHrBpm.toString(),
-    maxHrBpm: value.maxHrBpm.toString(),
-    vo2MaxMlKgMin: value.vo2MaxMlKgMin?.toString() ?? "",
-    plannedCarbsPerHour: value.plannedCarbsPerHour?.toString() ?? "",
-    segmentPace: formatPaceInput(value.speedMPerMin),
-    segmentTime: formatDurationInput(value.segmentDurationMin),
-    cumulativeTime: formatDurationInput(value.cumulativeTimeMin),
-    slopeDecimal: value.slopeDecimal.toString(),
-    cumulativeAscentM: value.cumulativeAscentM.toString(),
-    cumulativeDescentM: value.cumulativeDescentM.toString(),
-    ambientTempC: value.ambientTempC.toString(),
-    terrainFactor: value.terrainFactor.toString()
-  });
+  const [inputPage, setInputPage] = useState<InputPage>("profile");
+  const [draft, setDraft] = useState<InputDraft>(() => createDraftFromInput(value));
 
   useEffect(() => {
-    setDraft({
-      weightKg: value.weightKg.toString(),
-      age: value.age.toString(),
-      heartRate: value.heartRate.toString(),
-      bodyFatPct: value.bodyFatPct?.toString() ?? "",
-      heightM: value.heightM.toString(),
-      restingHrBpm: value.restingHrBpm.toString(),
-      maxHrBpm: value.maxHrBpm.toString(),
-      vo2MaxMlKgMin: value.vo2MaxMlKgMin?.toString() ?? "",
-      plannedCarbsPerHour: value.plannedCarbsPerHour?.toString() ?? "",
-      segmentPace: formatPaceInput(value.speedMPerMin),
-      segmentTime: formatDurationInput(value.segmentDurationMin),
-      cumulativeTime: formatDurationInput(value.cumulativeTimeMin),
-      slopeDecimal: value.slopeDecimal.toString(),
-      cumulativeAscentM: value.cumulativeAscentM.toString(),
-      cumulativeDescentM: value.cumulativeDescentM.toString(),
-      ambientTempC: value.ambientTempC.toString(),
-      terrainFactor: value.terrainFactor.toString()
-    });
+    setDraft(createDraftFromInput(value));
   }, [value]);
 
   const updateNumber = (
@@ -648,6 +617,24 @@ function PreviewMetric({
 const inputClassName =
   "h-14 w-full rounded-2xl border border-slate-800 bg-[#060b16] px-4 text-lg text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-400/60";
 
-function formatSigned(value: number, unit: string) {
-  return `${value > 0 ? "+" : ""}${Math.round(value)}${unit}`;
+function createDraftFromInput(value: CoachInput) {
+  return {
+    weightKg: value.weightKg.toString(),
+    age: value.age.toString(),
+    heartRate: value.heartRate.toString(),
+    bodyFatPct: value.bodyFatPct?.toString() ?? "",
+    heightM: value.heightM.toString(),
+    restingHrBpm: value.restingHrBpm.toString(),
+    maxHrBpm: value.maxHrBpm.toString(),
+    vo2MaxMlKgMin: value.vo2MaxMlKgMin?.toString() ?? "",
+    plannedCarbsPerHour: value.plannedCarbsPerHour?.toString() ?? "",
+    segmentPace: formatPaceInput(value.speedMPerMin),
+    segmentTime: formatDurationInput(value.segmentDurationMin),
+    cumulativeTime: formatDurationInput(value.cumulativeTimeMin),
+    slopeDecimal: value.slopeDecimal.toString(),
+    cumulativeAscentM: value.cumulativeAscentM.toString(),
+    cumulativeDescentM: value.cumulativeDescentM.toString(),
+    ambientTempC: value.ambientTempC.toString(),
+    terrainFactor: value.terrainFactor.toString()
+  };
 }

@@ -4,7 +4,8 @@ import {
   CoachPlan,
   IntakeEvent,
   SessionSummary
-} from "@/lib/mvp/coachModel";
+} from "@/core/coachModel";
+import { formatSigned } from "@/utils/format";
 
 interface GuidancePanelProps {
   plan: CoachPlan;
@@ -359,10 +360,6 @@ function describeEvent(event: IntakeEvent) {
   }
 
   return `${event.type === "carbs" ? "carbs" : "drink"} ${event.amount}${event.unit}`;
-}
-
-function formatSigned(value: number, unit: string) {
-  return `${value > 0 ? "+" : ""}${value}${unit}`;
 }
 
 function resolveMarkerOffset(minute: number, totalMinute: number) {
