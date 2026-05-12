@@ -12,9 +12,9 @@ rekenlogica staat centraal en onafhankelijk in `core/app/src/core`.
 ```text
 .
 ├── README.md
-├── Energy_calculator.xlsx
-├── Fueling_plan.pdf
 ├── docs/
+│   ├── Energy_calculator.xlsx
+│   ├── Fueling_plan.pdf
 │   └── FuelPlan_MVP_Wiskundige_Samenvatting.*
 └── core/
     └── app/
@@ -26,10 +26,13 @@ rekenlogica staat centraal en onafhankelijk in `core/app/src/core`.
 
 ### Rootniveau
 
-`Energy_calculator.xlsx` en `Fueling_plan.pdf` zijn inhoudelijke referenties.
-Ze zijn geen runtime dependency, maar documenteren de sport science basis.
+`docs/` bevat de inhoudelijke referenties voor de sport science basis:
 
-`docs/` bevat extra wiskundige samenvattingen en toelichting.
+- `Energy_calculator.xlsx`: Excel-bron voor de oorspronkelijke rekenlogica.
+- `Fueling_plan.pdf`: methodiek en fueling-aanpak.
+- `FuelPlan_MVP_Wiskundige_Samenvatting.*`: aanvullende wiskundige samenvatting.
+
+Deze documenten zijn geen runtime dependency.
 
 `core/app/` bevat de eigenlijke applicatie. Dit is de map die lokaal draait en
 door Vercel wordt gedeployed.
