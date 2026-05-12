@@ -38,6 +38,7 @@ version
 Thumbs.db
 .vscode/
 .idea/
+.vercel/
 .codex/
 .sbx-denybin/
 .thumbnails/
