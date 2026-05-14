@@ -73,6 +73,10 @@ export interface CoachPlan {
   totalKcal: number;
   selectedEngine: SelectedEnergyEngine;
   selectedEngineReason: string;
+  selectedKjMin: number;
+  keytelKjMin: number;
+  minettiKjMin: number;
+  engineGapPct: number;
   averageRer: number;
   keytelTotalKcal: number;
   minettiTotalKcal: number;
@@ -291,6 +295,13 @@ export function calculateCoachPlan(
     totalKcal: energyResult.totalKcal,
     selectedEngine: energySegmentResult.selectedEngine,
     selectedEngineReason: energySegmentResult.reason,
+    selectedKjMin: currentSegmentResult.selectedKjMin,
+    keytelKjMin: currentSegmentResult.keytelKjMin,
+    minettiKjMin: currentSegmentResult.minettiKjMin,
+    engineGapPct: calculateEngineGapPct(
+      currentSegmentResult.keytelKjMin,
+      currentSegmentResult.minettiKjMin
+    ),
     averageRer: energyResult.averageRer,
     keytelTotalKcal: energyResult.keytelTotalKcal,
     minettiTotalKcal: energyResult.minettiTotalKcal,
@@ -743,6 +754,14 @@ function sumIntakeByType(intakeEvents: IntakeEvent[], type: ReminderType): numbe
   return intakeEvents
     .filter((event) => event.type === type)
     .reduce((total, event) => total + event.amount, 0);
+}
+
+function calculateEngineGapPct(keytelKjMin: number, minettiKjMin: number): number {
+  if (keytelKjMin <= 0) {
+    return 0;
+  }
+
+  return roundTo(((minettiKjMin - keytelKjMin) / keytelKjMin) * 100, 1);
 }
 
 function nextActionMinute(carbMinute: number, hydrationMinute: number): number {

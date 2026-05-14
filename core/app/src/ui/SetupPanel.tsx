@@ -65,9 +65,9 @@ export function SetupPanel({
       return;
     }
 
-    const parsed = Number(nextValue);
+    const parsed = parseNumberInput(nextValue);
 
-    if (Number.isNaN(parsed)) {
+    if (parsed === null) {
       return;
     }
 
@@ -83,9 +83,23 @@ export function SetupPanel({
       [key]: nextValue
     }));
 
+    if (nextValue === "") {
+      onChange({
+        ...value,
+        [key]: null
+      });
+      return;
+    }
+
+    const parsed = parseNumberInput(nextValue);
+
+    if (parsed === null) {
+      return;
+    }
+
     onChange({
       ...value,
-      [key]: nextValue === "" ? null : Number(nextValue)
+      [key]: parsed
     });
   };
 
@@ -143,9 +157,38 @@ export function SetupPanel({
     });
   };
 
-  const restoreDraft = (key: keyof typeof draft, fallback: string) => {
+  const restoreNumberDraft = (key: keyof typeof draft, fallback: string) => {
     setDraft((previous) =>
-      previous[key] === ""
+      previous[key] === "" || parseNumberInput(previous[key]) === null
+        ? {
+            ...previous,
+            [key]: fallback
+          }
+        : previous
+    );
+  };
+
+  const restoreOptionalNumberDraft = (
+    key: keyof typeof draft,
+    fallback: string
+  ) => {
+    setDraft((previous) =>
+      previous[key] !== "" && parseNumberInput(previous[key]) === null
+        ? {
+            ...previous,
+            [key]: fallback
+          }
+        : previous
+    );
+  };
+
+  const restoreParsedDraft = (
+    key: keyof typeof draft,
+    fallback: string,
+    parser: (value: string) => number | null
+  ) => {
+    setDraft((previous) =>
+      previous[key] === "" || parser(previous[key]) === null
         ? {
             ...previous,
             [key]: fallback
@@ -214,8 +257,9 @@ export function SetupPanel({
               max={220}
               step={0.1}
               value={draft.weightKg}
+              placeholder="70"
               onChange={(event) => updateNumber("weightKg", event.target.value)}
-              onBlur={() => restoreDraft("weightKg", value.weightKg.toString())}
+              onBlur={() => restoreNumberDraft("weightKg", value.weightKg.toString())}
             />
           </Field>
 
@@ -227,8 +271,9 @@ export function SetupPanel({
               max={90}
               step={1}
               value={draft.age}
+              placeholder="26"
               onChange={(event) => updateNumber("age", event.target.value)}
-              onBlur={() => restoreDraft("age", value.age.toString())}
+              onBlur={() => restoreNumberDraft("age", value.age.toString())}
             />
           </Field>
 
@@ -251,8 +296,9 @@ export function SetupPanel({
               max={2.3}
               step={0.01}
               value={draft.heightM}
+              placeholder="1.80"
               onChange={(event) => updateNumber("heightM", event.target.value)}
-              onBlur={() => restoreDraft("heightM", value.heightM.toString())}
+              onBlur={() => restoreNumberDraft("heightM", value.heightM.toString())}
             />
           </Field>
 
@@ -264,9 +310,10 @@ export function SetupPanel({
               max={120}
               step={1}
               value={draft.restingHrBpm}
+              placeholder="53"
               onChange={(event) => updateNumber("restingHrBpm", event.target.value)}
               onBlur={() =>
-                restoreDraft("restingHrBpm", value.restingHrBpm.toString())
+                restoreNumberDraft("restingHrBpm", value.restingHrBpm.toString())
               }
             />
           </Field>
@@ -279,12 +326,13 @@ export function SetupPanel({
               max={240}
               step={1}
               value={draft.maxHrBpm}
+              placeholder="193"
               onChange={(event) => updateNumber("maxHrBpm", event.target.value)}
-              onBlur={() => restoreDraft("maxHrBpm", value.maxHrBpm.toString())}
+              onBlur={() => restoreNumberDraft("maxHrBpm", value.maxHrBpm.toString())}
             />
           </Field>
 
-          <Field label="Body fat (%) optional">
+          <Field label="Body fat (%)">
             <input
               className={inputClassName}
               type="number"
@@ -295,11 +343,17 @@ export function SetupPanel({
               onChange={(event) =>
                 updateNullableNumber("bodyFatPct", event.target.value)
               }
-              placeholder="Fallback estimate"
+              onBlur={() =>
+                restoreOptionalNumberDraft(
+                  "bodyFatPct",
+                  value.bodyFatPct?.toString() ?? ""
+                )
+              }
+              placeholder="BMI estimate"
             />
           </Field>
 
-          <Field label="VO2max optional">
+          <Field label="VO2max (ml/kg/min)">
             <input
               className={inputClassName}
               type="number"
@@ -309,6 +363,12 @@ export function SetupPanel({
               value={draft.vo2MaxMlKgMin}
               onChange={(event) =>
                 updateNullableNumber("vo2MaxMlKgMin", event.target.value)
+              }
+              onBlur={() =>
+                restoreOptionalNumberDraft(
+                  "vo2MaxMlKgMin",
+                  value.vo2MaxMlKgMin?.toString() ?? ""
+                )
               }
               placeholder="HR estimate"
             />
@@ -325,6 +385,12 @@ export function SetupPanel({
               onChange={(event) =>
                 updateNullableNumber("plannedCarbsPerHour", event.target.value)
               }
+              onBlur={() =>
+                restoreOptionalNumberDraft(
+                  "plannedCarbsPerHour",
+                  value.plannedCarbsPerHour?.toString() ?? ""
+                )
+              }
               placeholder="Auto target"
             />
           </Field>
@@ -335,11 +401,15 @@ export function SetupPanel({
             <input
               className={inputClassName}
               type="text"
-              inputMode="numeric"
+              inputMode="text"
               value={draft.segmentPace}
               onChange={(event) => updatePace(event.target.value)}
               onBlur={() =>
-                restoreDraft("segmentPace", formatPaceInput(value.speedMPerMin))
+                restoreParsedDraft(
+                  "segmentPace",
+                  formatPaceInput(value.speedMPerMin),
+                  parsePaceToSpeedMPerMin
+                )
               }
               placeholder="06:01"
             />
@@ -349,15 +419,16 @@ export function SetupPanel({
             <input
               className={inputClassName}
               type="text"
-              inputMode="numeric"
+              inputMode="text"
               value={draft.segmentTime}
               onChange={(event) =>
                 updateDuration("segmentDurationMin", "segmentTime", event.target.value)
               }
               onBlur={() =>
-                restoreDraft(
+                restoreParsedDraft(
                   "segmentTime",
-                  formatDurationInput(value.segmentDurationMin)
+                  formatDurationInput(value.segmentDurationMin),
+                  parseDurationToMinutes
                 )
               }
               placeholder="1:36:22"
@@ -368,15 +439,16 @@ export function SetupPanel({
             <input
               className={inputClassName}
               type="text"
-              inputMode="numeric"
+              inputMode="text"
               value={draft.cumulativeTime}
               onChange={(event) =>
                 updateDuration("cumulativeTimeMin", "cumulativeTime", event.target.value)
               }
               onBlur={() =>
-                restoreDraft(
+                restoreParsedDraft(
                   "cumulativeTime",
-                  formatDurationInput(value.cumulativeTimeMin)
+                  formatDurationInput(value.cumulativeTimeMin),
+                  parseDurationToMinutes
                 )
               }
               placeholder="1:36:22"
@@ -391,12 +463,13 @@ export function SetupPanel({
               max={220}
               step={1}
               value={draft.heartRate}
+              placeholder="125"
               onChange={(event) => updateNumber("heartRate", event.target.value)}
-              onBlur={() => restoreDraft("heartRate", value.heartRate.toString())}
+              onBlur={() => restoreNumberDraft("heartRate", value.heartRate.toString())}
             />
           </Field>
 
-          <Field label="Segment slope (% in 0,00)">
+          <Field label="Segment slope (decimal)">
             <input
               className={inputClassName}
               type="number"
@@ -404,9 +477,10 @@ export function SetupPanel({
               max={0.45}
               step={0.0001}
               value={draft.slopeDecimal}
+              placeholder="0.0177"
               onChange={(event) => updateNumber("slopeDecimal", event.target.value)}
               onBlur={() =>
-                restoreDraft("slopeDecimal", value.slopeDecimal.toString())
+                restoreNumberDraft("slopeDecimal", value.slopeDecimal.toString())
               }
             />
           </Field>
@@ -419,11 +493,12 @@ export function SetupPanel({
               max={20000}
               step={1}
               value={draft.cumulativeAscentM}
+              placeholder="140"
               onChange={(event) =>
                 updateNumber("cumulativeAscentM", event.target.value)
               }
               onBlur={() =>
-                restoreDraft("cumulativeAscentM", value.cumulativeAscentM.toString())
+                restoreNumberDraft("cumulativeAscentM", value.cumulativeAscentM.toString())
               }
             />
           </Field>
@@ -436,11 +511,12 @@ export function SetupPanel({
               max={20000}
               step={1}
               value={draft.cumulativeDescentM}
+              placeholder="143"
               onChange={(event) =>
                 updateNumber("cumulativeDescentM", event.target.value)
               }
               onBlur={() =>
-                restoreDraft(
+                restoreNumberDraft(
                   "cumulativeDescentM",
                   value.cumulativeDescentM.toString()
                 )
@@ -456,9 +532,10 @@ export function SetupPanel({
               max={55}
               step={0.1}
               value={draft.ambientTempC}
+              placeholder="20"
               onChange={(event) => updateNumber("ambientTempC", event.target.value)}
               onBlur={() =>
-                restoreDraft("ambientTempC", value.ambientTempC.toString())
+                restoreNumberDraft("ambientTempC", value.ambientTempC.toString())
               }
             />
           </Field>
@@ -471,9 +548,10 @@ export function SetupPanel({
               max={1.6}
               step={0.01}
               value={draft.terrainFactor}
+              placeholder="1.05"
               onChange={(event) => updateNumber("terrainFactor", event.target.value)}
               onBlur={() =>
-                restoreDraft("terrainFactor", value.terrainFactor.toString())
+                restoreNumberDraft("terrainFactor", value.terrainFactor.toString())
               }
             />
           </Field>
@@ -637,4 +715,15 @@ function createDraftFromInput(value: CoachInput) {
     ambientTempC: value.ambientTempC.toString(),
     terrainFactor: value.terrainFactor.toString()
   };
+}
+
+function parseNumberInput(value: string): number | null {
+  const normalized = value.trim().replace(",", ".");
+
+  if (normalized === "") {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }

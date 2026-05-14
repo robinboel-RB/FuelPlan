@@ -74,6 +74,53 @@ en signed number formatting.
 `src/services` is leeg in de MVP. Voeg hier pas code toe wanneer er echte API,
 storage, database of externe integratie nodig is.
 
+## App-flow en invoer
+
+De MVP heeft twee hoofdschermen:
+
+```text
+Setup       athlete input, run data en equation selector
+Guidance    live trainingweergave, fueling acties en engine-output
+```
+
+### Setup input
+
+De setup splitst input bewust op:
+
+- `Athlete input`: profieldata zoals gewicht, leeftijd, lengte, rust-HR,
+  max-HR, vetpercentage, VO2max en geplande koolhydraten per uur.
+- `Run data deep dive`: segmentdata zoals tempo, segmenttijd, cumulatieve
+  tijd, hartslag, helling, hoogtemeters, temperatuur en terrain factor.
+
+Verplichte numerieke velden hebben een voorbeeldwaarde als placeholder en
+vallen bij lege of ongeldige input terug naar de laatst geldige waarde. Zo kan
+de UI geen `NaN` of lege verplichte waarden naar de rekenkern sturen.
+
+Optionele velden mogen leeg blijven:
+
+```text
+Body fat (%)             lege waarde gebruikt BMI estimate
+VO2max (ml/kg/min)       lege waarde gebruikt HR estimate
+Planned carbs (g/h)      lege waarde gebruikt auto target
+```
+
+Pace en tijdvelden gebruiken tekstinput omdat notaties zoals `06:01` en
+`1:36:22` geen gewone decimale getallen zijn.
+
+### Training output
+
+Tijdens de training toont `GuidancePanel` niet alleen de gekozen output, maar
+ook een live vergelijking tussen beide engines:
+
+```text
+Keytel   kJ/min + totale kcal
+Minetti  kJ/min + totale kcal
+```
+
+De geselecteerde engine wordt gemarkeerd en de balken tonen visueel hoe dicht
+Keytel en Minetti bij elkaar liggen. De UI gebruikt hiervoor alleen waarden uit
+`coachModel.ts`; de formules zelf blijven in `trainingEnergyModel.ts`.
+
 ## Kernberekeningen
 
 De centrale rekenkern staat in:

@@ -111,6 +111,7 @@ export function GuidancePanel({
           <Metric label="Fuel deficit" value={`${Math.round(plan.fuelDeficitG)} g`} />
           <Metric label="RER" value={plan.averageRer.toFixed(2)} />
         </div>
+        <EngineComparison plan={plan} />
         <div className="text-sm text-slate-500">{plan.selectedEngineReason}</div>
         {plan.energyWarnings.length > 0 ? (
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -253,6 +254,108 @@ function Metric({ label, value }: { label: string; value: string }) {
         {label}
       </div>
       <div className="mt-2 text-xl font-semibold text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+function EngineComparison({ plan }: { plan: CoachPlan }) {
+  const maxKjMin = Math.max(plan.keytelKjMin, plan.minettiKjMin, 0.1);
+  const gapLabel =
+    plan.engineGapPct === 0
+      ? "Keytel and Minetti aligned"
+      : `Minetti ${Math.abs(plan.engineGapPct).toFixed(1)}% ${
+          plan.engineGapPct > 0 ? "above" : "below"
+        } Keytel`;
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-slate-800/80 bg-[rgba(3,9,19,0.48)] p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            Live equation comparison
+          </div>
+          <div className="mt-1 text-sm text-slate-400">{gapLabel}</div>
+        </div>
+        <div className="text-left md:text-right">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            Selected output
+          </div>
+          <div className="mt-1 text-lg font-semibold text-cyan-200">
+            {plan.selectedKjMin.toFixed(1)} kJ/min
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <EngineBar
+          label="Keytel"
+          valueKjMin={plan.keytelKjMin}
+          totalKcal={plan.keytelTotalKcal}
+          maxKjMin={maxKjMin}
+          active={plan.selectedEngine === "keytel"}
+        />
+        <EngineBar
+          label="Minetti"
+          valueKjMin={plan.minettiKjMin}
+          totalKcal={plan.minettiTotalKcal}
+          maxKjMin={maxKjMin}
+          active={plan.selectedEngine === "minetti"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EngineBar({
+  label,
+  valueKjMin,
+  totalKcal,
+  maxKjMin,
+  active
+}: {
+  label: "Keytel" | "Minetti";
+  valueKjMin: number;
+  totalKcal: number;
+  maxKjMin: number;
+  active: boolean;
+}) {
+  const widthPct = Math.max(4, Math.min(100, (valueKjMin / maxKjMin) * 100));
+
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-4 ${
+        active
+          ? "border-cyan-400/50 bg-cyan-400/10"
+          : "border-slate-800 bg-slate-950/25"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-100">{label}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            {Math.round(totalKcal)} kcal total
+          </div>
+        </div>
+        {active ? (
+          <div className="rounded-full border border-cyan-300/40 bg-cyan-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200">
+            selected
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <div className="h-2 flex-1 rounded-full bg-slate-800">
+          <div
+            className={`h-2 rounded-full ${
+              label === "Keytel" ? "bg-cyan-300" : "bg-amber-300"
+            }`}
+            style={{ width: `${widthPct}%` }}
+          />
+        </div>
+        <div className="w-[88px] text-right text-sm font-semibold text-slate-200">
+          {valueKjMin.toFixed(1)} kJ/min
+        </div>
+      </div>
     </div>
   );
 }
