@@ -8,9 +8,19 @@ import {
   SIMULATION_STEP_MIN,
   calculateCoachPlan,
   calculateSessionSummary,
+  createFuelPlanWatchOutput,
   formatClockLabel,
   sanitizeCoachInput
-} from "@/core/coachModel";
+} from "@/engine/fuelingEngine";
+import { createMockWatchSensorSample } from "@/integrations/watch/mockWatchProvider";
+import {
+  getWatchProvider,
+  resolveWatchProviderStatus
+} from "@/integrations/watch/watchProviderRegistry";
+import {
+  WatchConnectionStatus,
+  WatchProviderId
+} from "@/integrations/watch/types";
 
 export type CoachScreen = "setup" | "guidance";
 
@@ -20,6 +30,10 @@ export function useCoachSession() {
   const [elapsedMinute, setElapsedMinute] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [intakeEvents, setIntakeEvents] = useState<IntakeEvent[]>([]);
+  const [selectedWatchProviderId, setSelectedWatchProviderId] =
+    useState<WatchProviderId>("samsung");
+  const [watchConnectionStatus, setWatchConnectionStatus] =
+    useState<WatchConnectionStatus>("real_integration_pending");
 
   const sessionEndMinute = useMemo(
     () => Math.ceil(sanitizeCoachInput(input).segmentDurationMin),
@@ -57,6 +71,23 @@ export function useCoachSession() {
   );
 
   const isCompleted = elapsedMinute >= sessionEndMinute;
+  const selectedWatchProvider = useMemo(
+    () => getWatchProvider(selectedWatchProviderId),
+    [selectedWatchProviderId]
+  );
+  const watchSensorSample = useMemo(
+    () => createMockWatchSensorSample({ input, elapsedMinute }),
+    [elapsedMinute, input]
+  );
+  const watchOutput = useMemo(
+    () => createFuelPlanWatchOutput(watchSensorSample, plan),
+    [plan, watchSensorSample]
+  );
+
+  const selectWatchProvider = (providerId: WatchProviderId) => {
+    setSelectedWatchProviderId(providerId);
+    setWatchConnectionStatus(resolveWatchProviderStatus(providerId));
+  };
 
   const startSession = () => {
     setScreen("guidance");
@@ -131,6 +162,12 @@ export function useCoachSession() {
     screen,
     input,
     setInput,
+    selectedWatchProviderId,
+    selectedWatchProvider,
+    watchConnectionStatus,
+    watchSensorSample,
+    watchOutput,
+    selectWatchProvider,
     elapsedMinute,
     isRunning,
     isCompleted,

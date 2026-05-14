@@ -1,9 +1,9 @@
 "use client";
 
 import { useCoachSession } from "@/state/useCoachSession";
+import { WatchPanel } from "@/components/WatchPanel";
 import { GuidancePanel } from "@/ui/GuidancePanel";
 import { SetupPanel } from "@/ui/SetupPanel";
-import { WatchCoach } from "@/ui/WatchCoach";
 
 export default function HomePage() {
   const session = useCoachSession();
@@ -28,10 +28,16 @@ export default function HomePage() {
 
         <div className="grid gap-8 xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start">
           <section className="xl:sticky xl:top-8">
-            <WatchCoach
+            <WatchPanel
               input={session.input}
               plan={session.plan}
               elapsedMinute={session.elapsedMinute}
+              selectedProviderId={session.selectedWatchProviderId}
+              provider={session.selectedWatchProvider}
+              connectionStatus={session.watchConnectionStatus}
+              sensorSample={session.watchSensorSample}
+              watchOutput={session.watchOutput}
+              onSelectProvider={session.selectWatchProvider}
             />
           </section>
 

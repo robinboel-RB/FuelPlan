@@ -8,7 +8,11 @@ import {
   calculateHydrationPlan,
   calculateTrainingEnergy,
   generateFuelingRecommendation
-} from "@/core/trainingEnergyModel";
+} from "@/engine/energyEngine";
+import type {
+  FuelPlanWatchOutput,
+  WatchSensorSample
+} from "@/integrations/watch/types";
 
 export type Gender = UserProfile["gender"];
 export type EquationOutputMode = EnergyOutputMode;
@@ -779,4 +783,82 @@ function roundToOne(value: number): number {
 function roundTo(value: number, decimals: number): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
+}
+
+export function createFuelPlanWatchOutput(
+  sample: WatchSensorSample,
+  plan?: Pick<
+    CoachPlan,
+    | "carbDoseG"
+    | "hydrationDoseMl"
+    | "fuelBufferG"
+    | "fuelDeficitG"
+    | "nextFuelActionInMin"
+    | "nextActionLabel"
+    | "fuelMessage"
+    | "dueCarbMinute"
+    | "dueHydrationMinute"
+  >
+): FuelPlanWatchOutput {
+  if (!plan) {
+    return {
+      nextFuelAction: "none",
+      carbsDoseGrams: 0,
+      drinkDoseMl: 0,
+      nextActionTimerSeconds: Math.max(0, sample.elapsedSeconds),
+      fuelBufferGrams: 0,
+      fuelDeficitGrams: 0,
+      message: "FuelPlan demo data ready."
+    };
+  }
+
+  const nextFuelAction = resolveNextFuelAction(plan);
+
+  return {
+    nextFuelAction,
+    carbsDoseGrams:
+      nextFuelAction === "carbs" || nextFuelAction === "carbs_and_drink"
+        ? plan.carbDoseG
+        : 0,
+    drinkDoseMl:
+      nextFuelAction === "drink" || nextFuelAction === "carbs_and_drink"
+        ? plan.hydrationDoseMl
+        : 0,
+    nextActionTimerSeconds: Math.max(0, plan.nextFuelActionInMin * 60),
+    fuelBufferGrams: plan.fuelBufferG,
+    fuelDeficitGrams: plan.fuelDeficitG,
+    message: plan.nextFuelActionInMin === 0 ? plan.fuelMessage : plan.nextActionLabel
+  };
+}
+
+function resolveNextFuelAction(
+  plan: Pick<CoachPlan, "dueCarbMinute" | "dueHydrationMinute" | "nextActionLabel">
+): FuelPlanWatchOutput["nextFuelAction"] {
+  if (plan.dueCarbMinute !== null && plan.dueHydrationMinute !== null) {
+    return "carbs_and_drink";
+  }
+
+  if (plan.dueCarbMinute !== null) {
+    return "carbs";
+  }
+
+  if (plan.dueHydrationMinute !== null) {
+    return "drink";
+  }
+
+  const label = plan.nextActionLabel.toLowerCase();
+
+  if (label.includes("carbs") && label.includes("drink")) {
+    return "carbs_and_drink";
+  }
+
+  if (label.includes("carbs")) {
+    return "carbs";
+  }
+
+  if (label.includes("drink")) {
+    return "drink";
+  }
+
+  return "none";
 }

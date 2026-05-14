@@ -19,14 +19,17 @@ npm run build
 
 ```text
 src/app       Next.js shell
+src/components watch-integratie componenten
 src/ui        visuele React componenten
 src/state     React state en sessie-acties
-src/core      pure FuelPlan berekeningen en coachlogica
+src/engine    pure FuelPlan berekeningen en fueling-output
+src/integrations/watch watch provider-contracten en demo/provider adapters
 src/utils     generieke formatting/parsing helpers
 src/services  leeg in de MVP; alleen voor echte externe integraties
 ```
 
-De centrale rekenlogica staat in `src/core/trainingEnergyModel.ts`.
+De centrale rekenlogica staat in `src/engine/energyEngine.ts`.
+De watch-output mapping staat in `src/engine/fuelingEngine.ts`.
 React componenten mogen alleen data tonen en user input doorgeven.
 
 ## Vercel

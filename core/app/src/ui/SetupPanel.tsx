@@ -6,7 +6,7 @@ import {
   CoachPlan,
   EquationOutputMode,
   Gender
-} from "@/core/coachModel";
+} from "@/engine/fuelingEngine";
 import {
   formatDurationInput,
   formatPaceInput,

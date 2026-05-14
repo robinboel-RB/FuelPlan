@@ -4,7 +4,7 @@ import {
   CoachPlan,
   IntakeEvent,
   SessionSummary
-} from "@/core/coachModel";
+} from "@/engine/fuelingEngine";
 import { formatSigned } from "@/utils/format";
 
 interface GuidancePanelProps {

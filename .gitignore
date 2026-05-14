@@ -11,6 +11,8 @@ core/app/.next/
 core/app/out/
 core/app/dist/
 core/app/tsconfig.tsbuildinfo
+core/app/test-results/
+core/app/playwright-report/
 
 # Electron/package output
 core/dist/

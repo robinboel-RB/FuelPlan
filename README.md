@@ -5,7 +5,7 @@ energieverbruik, brandstofverdeling en fueling-reminders door voor een
 training/run. De webapp staat in `core/app`.
 
 De kernregel van deze codebase: React toont data en geeft user input door; de
-rekenlogica staat centraal en onafhankelijk in `core/app/src/core`.
+rekenlogica staat centraal en onafhankelijk in `core/app/src/engine`.
 
 ## Mappenstructuur
 
@@ -46,26 +46,43 @@ en `.vercelignore`.
 ```text
 core/app/src/
 ├── app/        Next.js routes, layout en globale styling
-├── core/       kernberekeningen en pure business logic
+├── components/ watch integration componenten
+├── engine/     kernberekeningen, fueling en FuelPlan watch-output
+├── integrations/watch/
+│               provider contracts en watch adapters
 ├── state/      React sessie-state, timer en intake-acties
-├── ui/         visuele React componenten
+├── ui/         setup- en guidance-componenten
 ├── utils/      generieke formatting/parsing helpers
 └── services/   gereserveerd voor echte API/storage/integraties
 ```
 
 `src/app` is bewust dun. De pagina composeert de UI en gebruikt de session hook.
 
-`src/ui` bevat componenten zoals setup, watch en guidance panels. Deze laag mag
-geen sportformules bevatten.
+`src/components` bevat de watch integration panel componenten. Deze tonen
+providerkeuze, connection status, watch metrics en de FuelPlan prompt.
+
+`src/ui` bevat de setup- en guidance panels. Deze laag mag geen sportformules
+bevatten.
 
 `src/state/useCoachSession.ts` beheert de interactieve sessie: setup/guidance
 screen, elapsed time, pauze/hervat, intake-events en skip-events.
 
-`src/core` is de source of truth voor domeinlogica:
+`src/engine` is de source of truth voor rekenlogica:
 
 ```text
-src/core/trainingEnergyModel.ts  sport science berekeningen
-src/core/coachModel.ts           coachplan, reminders en session output
+src/engine/energyEngine.ts   Keytel, Minetti, RER en energy totals
+src/engine/fuelingEngine.ts  coachplan, fueling-reminders en FuelPlanWatchOutput
+```
+
+`src/integrations/watch` bevat de providerlaag:
+
+```text
+types.ts                  gedeelde watch data-contracten
+watchProviderRegistry.ts  centrale registry
+samsungProvider.ts        Wear OS / Samsung placeholder
+garminProvider.ts         Connect IQ placeholder
+corosProvider.ts          COROS sync-mode placeholder
+mockWatchProvider.ts      demo sensor samples voor de huidige simulatie
 ```
 
 `src/utils` bevat alleen generieke helpers zoals pace parsing, duur-formatting
@@ -119,14 +136,38 @@ Minetti  kJ/min + totale kcal
 
 De geselecteerde engine wordt gemarkeerd en de balken tonen visueel hoe dicht
 Keytel en Minetti bij elkaar liggen. De UI gebruikt hiervoor alleen waarden uit
-`coachModel.ts`; de formules zelf blijven in `trainingEnergyModel.ts`.
+`fuelingEngine.ts`; de formules zelf blijven in `energyEngine.ts`.
+
+### Watch integration panel
+
+Links staat nu een Watch Integration Panel met providerkeuze:
+
+```text
+Samsung   Wear OS / Health Services route, real integration pending
+Garmin    Connect IQ route, real integration pending
+COROS     sync mode; live custom watch app pending/limited
+```
+
+De providerkeuze verandert alleen de integratiestatus en context. De demo blijft
+werken via `mockWatchProvider`, zodat dezelfde data-contracten al getest kunnen
+worden zonder echte horlogekoppeling.
+
+Het watch contract gebruikt:
+
+```text
+WatchSensorSample      inkomende HR/distance/pace/time/elevation/temp data
+FuelPlanWatchOutput    next action, carbs, drink, timer, buffer en deficit
+```
+
+De UI claimt bewust niet dat COROS dezelfde live custom watch-app route heeft
+als Samsung/Garmin.
 
 ## Kernberekeningen
 
 De centrale rekenkern staat in:
 
 ```text
-core/app/src/core/trainingEnergyModel.ts
+core/app/src/engine/energyEngine.ts
 ```
 
 De belangrijkste inputtypes zijn:
