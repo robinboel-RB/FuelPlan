@@ -15,10 +15,11 @@ export const commonWatchOutputFields = [
 
 export const mockWatchProvider: WatchProvider = {
   id: "mock",
-  label: "Demo Watch",
+  label: "Demo",
   status: "demo_connected",
-  description: "Local simulation data contract used by the MVP.",
-  modeLabel: "Demo connected",
+  description:
+    "Demo view without an external watch. The MVP uses local sensor samples with the same contracts as a real integration.",
+  modeLabel: "Demo view",
   expectedData: [
     { key: "heartRate", availability: "required" },
     { key: "distance", availability: "required" },
@@ -28,6 +29,22 @@ export const mockWatchProvider: WatchProvider = {
     { key: "temperature", availability: "optional" }
   ],
   outputFields: commonWatchOutputFields,
+  integrationSteps: [
+    {
+      title: "Select Demo",
+      detail: "No external account, SDK, phone bridge, or watch install is needed."
+    },
+    {
+      title: "Run local simulation",
+      detail:
+        "FuelPlan converts the current session input into WatchSensorSample values."
+    },
+    {
+      title: "Render watch output",
+      detail:
+        "The fueling engine returns FuelPlanWatchOutput for reminders, buffer, deficit, carbs, and drink."
+    }
+  ],
   connect: () => "demo_connected",
   disconnect: () => "not_connected"
 };

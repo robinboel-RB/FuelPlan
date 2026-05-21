@@ -31,9 +31,9 @@ export function useCoachSession() {
   const [isRunning, setIsRunning] = useState(false);
   const [intakeEvents, setIntakeEvents] = useState<IntakeEvent[]>([]);
   const [selectedWatchProviderId, setSelectedWatchProviderId] =
-    useState<WatchProviderId>("samsung");
+    useState<WatchProviderId>("mock");
   const [watchConnectionStatus, setWatchConnectionStatus] =
-    useState<WatchConnectionStatus>("real_integration_pending");
+    useState<WatchConnectionStatus>("demo_connected");
 
   const sessionEndMinute = useMemo(
     () => Math.ceil(sanitizeCoachInput(input).segmentDurationMin),

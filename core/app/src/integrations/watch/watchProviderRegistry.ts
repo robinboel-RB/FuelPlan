@@ -16,6 +16,7 @@ export const watchProviderRegistry: Record<WatchProviderId, WatchProvider> = {
 };
 
 export const selectableWatchProviders: WatchProviderId[] = [
+  "mock",
   "samsung",
   "garmin",
   "coros"

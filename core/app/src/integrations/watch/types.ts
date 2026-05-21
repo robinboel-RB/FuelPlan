@@ -50,6 +50,11 @@ export interface WatchOutputField {
     | "fuelDeficit";
 }
 
+export interface WatchIntegrationStep {
+  title: string;
+  detail: string;
+}
+
 export interface WatchProvider {
   id: WatchProviderId;
   label: string;
@@ -58,6 +63,7 @@ export interface WatchProvider {
   modeLabel: string;
   expectedData: WatchExpectedDataField[];
   outputFields: WatchOutputField[];
+  integrationSteps: WatchIntegrationStep[];
   connect: () => WatchConnectionStatus;
   disconnect: () => WatchConnectionStatus;
 }

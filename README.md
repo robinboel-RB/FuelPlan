@@ -50,6 +50,7 @@ core/app/src/
 ├── engine/     kernberekeningen, fueling en FuelPlan watch-output
 ├── integrations/watch/
 │               provider contracts en watch adapters
+├── lib/push/   Web Push configuratie en tijdelijke subscription-store
 ├── state/      React sessie-state, timer en intake-acties
 ├── ui/         setup- en guidance-componenten
 ├── utils/      generieke formatting/parsing helpers
@@ -87,6 +88,21 @@ mockWatchProvider.ts      demo sensor samples voor de huidige simulatie
 
 `src/utils` bevat alleen generieke helpers zoals pace parsing, duur-formatting
 en signed number formatting.
+
+`src/lib/push` bevat de PWA/Web Push server utilities:
+
+```text
+subscriptions.ts  tijdelijke in-memory subscription store
+webpush.ts        VAPID-configuratie, payload-validatie en sending
+```
+
+`core/app/public` bevat de PWA-assets:
+
+```text
+manifest.json     PWA manifest voor FuelPlan Live Coach
+sw.js             service worker voor push notifications
+icons/            basisicons voor manifest en notifications
+```
 
 `src/services` is leeg in de MVP. Voeg hier pas code toe wanneer er echte API,
 storage, database of externe integratie nodig is.
@@ -143,14 +159,16 @@ Keytel en Minetti bij elkaar liggen. De UI gebruikt hiervoor alleen waarden uit
 Links staat nu een Watch Integration Panel met providerkeuze:
 
 ```text
+Demo      lokale simulatie zonder externe watch-koppeling
 Samsung   Wear OS / Health Services route, real integration pending
 Garmin    Connect IQ route, real integration pending
 COROS     sync mode; live custom watch app pending/limited
 ```
 
-De providerkeuze verandert alleen de integratiestatus en context. De demo blijft
-werken via `mockWatchProvider`, zodat dezelfde data-contracten al getest kunnen
-worden zonder echte horlogekoppeling.
+Demo is bewust een volwaardige optie. Daarmee kan FuelPlan als MVP blijven
+draaien zonder externe horlogekoppeling. De app gebruikt dan
+`mockWatchProvider`, maar nog steeds exact dezelfde data-contracten als de
+echte providerpaden.
 
 Het watch contract gebruikt:
 
@@ -161,6 +179,132 @@ FuelPlanWatchOutput    next action, carbs, drink, timer, buffer en deficit
 
 De UI claimt bewust niet dat COROS dezelfde live custom watch-app route heeft
 als Samsung/Garmin.
+
+### Watch integratie stappenplan
+
+De integratiestappen staan in `src/integrations/watch/*Provider.ts` en worden
+ook in het Watch Integration Panel getoond. Daardoor is per provider zichtbaar
+wat vandaag demo is en wat later als echte koppeling gebouwd moet worden.
+
+```text
+Demo
+1. Selecteer Demo.
+2. Start de lokale simulatie.
+3. FuelPlan maakt WatchSensorSample data uit de huidige sessie-input.
+4. fuelingEngine geeft FuelPlanWatchOutput terug voor prompts en timers.
+
+Samsung / Galaxy Watch
+1. Bouw een Wear OS companion app voor Galaxy Watch.
+2. Gebruik Wear OS Health Services voor exercise metrics zoals HR, distance,
+   pace/speed en elapsed time.
+3. Voeg Samsung Health Sensor SDK pas toe als extra BioActive data nodig is,
+   bijvoorbeeld IBI, PPG of skin temperature.
+4. Toon FuelPlanWatchOutput als on-watch card, countdown, trilling of alert.
+
+Garmin
+1. Bouw eerst een Connect IQ Data Field in Monkey C.
+2. Lees Activity.Info per compute-cycle voor HR, elapsed distance, speed/pace,
+   elapsed time en beschikbare vertical metrics.
+3. Toon next action, carbs, drink, timer, buffer en deficit in het data field.
+4. Voeg pas daarna een alert/watch-app route toe.
+
+COROS
+1. Gebruik voor de MVP sync mode, geen live custom watch-app claim.
+2. Vraag COROS API/partner access aan voor account- of activity-sync.
+3. Gebruik FIT import/export of planned workout sync als fallback.
+4. Beperk live prompts tot planning/post-run analyse zolang een live route
+   niet beschikbaar is.
+```
+
+Platformreferenties voor de toekomstige echte koppelingen:
+
+- Wear OS Health Services: <https://developer.android.com/health-and-fitness/health-services/compatibility>
+- Garmin Connect IQ Activity.Info/DataField: <https://developer.garmin.com/connect-iq/api-docs/Toybox/Activity/Info.html>
+- COROS API application: <https://support.coros.com/hc/en-us/articles/17085887816340-Submitting-an-API-Application>
+
+## PWA en Web Push
+
+De MVP heeft daarnaast een PWA-route:
+
+```text
+/live-session
+```
+
+Doel van deze route:
+
+```text
+Fueling timeline -> Web Push op telefoon -> telefoon spiegelt melding naar horloge
+```
+
+Er wordt bewust geen native Garmin-, Samsung-, Apple Watch- of COROS-app gebouwd
+voor deze MVP. De telefoon blijft de notification gateway.
+
+Belangrijke bestanden:
+
+```text
+core/app/public/manifest.json
+core/app/public/sw.js
+core/app/src/app/live-session/page.tsx
+core/app/src/components/PushNotificationManager.tsx
+core/app/src/app/api/push/subscribe/route.ts
+core/app/src/app/api/push/unsubscribe/route.ts
+core/app/src/app/api/push/test/route.ts
+core/app/src/app/api/push/send/route.ts
+core/app/src/lib/push/subscriptions.ts
+core/app/src/lib/push/webpush.ts
+```
+
+De service worker verwerkt:
+
+```text
+install
+activate
+push
+notificationclick
+```
+
+De live demo timeline stuurt meldingen op:
+
+```text
+1 min  Drink 150-200ml water
+2 min  Neem 25g carbs
+3 min  Drink opnieuw enkele slokken
+4 min  Check energiegevoel
+5 min  Neem 25g carbs indien intensiteit hoog blijft
+```
+
+### VAPID configuratie
+
+Genereer een keypair:
+
+```bash
+cd core/app
+npx web-push generate-vapid-keys
+```
+
+Gebruik `core/app/.env.example` als template. Zet daarna lokaal in
+`core/app/.env.local` en in Vercel Project Settings ->
+Environment Variables:
+
+```text
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:hello@example.com
+```
+
+Alleen `NEXT_PUBLIC_VAPID_PUBLIC_KEY` mag naar de browser. `VAPID_PRIVATE_KEY`
+blijft server-side en mag nooit in de repo of clientbundel komen.
+
+### Push MVP beperkingen
+
+De subscription-store is in-memory. Dat is bruikbaar voor lokale demo's, maar
+niet permanent of betrouwbaar op Vercel serverless door cold starts en meerdere
+instances. Vervang `src/lib/push/subscriptions.ts` later door Supabase, Redis,
+Vercel KV, Upstash of een database.
+
+Echte mobile push moet via HTTPS getest worden, dus bij voorkeur via de Vercel
+URL. `localhost` werkt voor desktop-browserontwikkeling, maar is geen goede
+test voor telefoon plus gekoppeld horloge.
 
 ## Kernberekeningen
 
@@ -330,6 +474,14 @@ Framework Preset: Next.js
 Build Command: npm run build
 Output Directory: default / leeg laten
 Install Command: npm install
+```
+
+Vercel environment variables voor Web Push:
+
+```text
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT
 ```
 
 Na een push naar de gekoppelde GitHub repo deployt Vercel automatisch.

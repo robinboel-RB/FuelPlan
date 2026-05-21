@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="FuelPlan">
+  <rect width="512" height="512" rx="112" fill="#03060b"/>
+  <circle cx="256" cy="256" r="176" fill="#0f172a"/>
+  <path d="M256 96c78 0 142 64 142 142 0 101-142 178-142 178S114 339 114 238C114 160 178 96 256 96Z" fill="#22d3ee"/>
+  <path d="M256 144c52 0 94 42 94 94 0 67-94 121-94 121s-94-54-94-121c0-52 42-94 94-94Z" fill="#03060b"/>
+  <path d="M256 182c31 0 56 25 56 56s-25 56-56 56-56-25-56-56 25-56 56-56Z" fill="#60a5fa"/>
+</svg>

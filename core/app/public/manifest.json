@@ -1,0 +1,25 @@
+{
+  "name": "FuelPlan Live Coach",
+  "short_name": "FuelPlan",
+  "description": "Live fueling reminders for phone and mirrored smartwatch notifications.",
+  "start_url": "/live-session",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#03060b",
+  "theme_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/fuelplan-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/fuelplan-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

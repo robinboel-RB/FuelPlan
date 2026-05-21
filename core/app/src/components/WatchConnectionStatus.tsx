@@ -21,6 +21,9 @@ export function WatchConnectionStatus({
           <div className="text-sm font-semibold text-slate-100">
             {provider.label}
           </div>
+          <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-cyan-300/80">
+            {provider.modeLabel}
+          </div>
           <div className="mt-1 text-xs leading-5 text-slate-500">
             {provider.description}
           </div>
@@ -43,6 +46,32 @@ export function WatchConnectionStatus({
             detail: "send"
           }))}
         />
+      </div>
+
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+          Connection path
+        </div>
+        <ol className="mt-3 space-y-3">
+          {provider.integrationSteps.map((step, index) => (
+            <li
+              key={`${provider.id}-${step.title}`}
+              className="grid grid-cols-[24px_minmax(0,1fr)] gap-3 text-sm"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-[11px] font-semibold text-slate-300">
+                {index + 1}
+              </span>
+              <span>
+                <span className="block font-semibold text-slate-200">
+                  {step.title}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">
+                  {step.detail}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
   );

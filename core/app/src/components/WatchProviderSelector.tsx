@@ -20,7 +20,7 @@ export function WatchProviderSelector({
       <div className="text-[11px] uppercase tracking-[0.26em] text-slate-500">
         Watch integration
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {selectableWatchProviders.map((providerId) => {
           const provider = getWatchProvider(providerId);
           const isActive = selectedProviderId === providerId;

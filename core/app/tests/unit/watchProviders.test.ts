@@ -3,6 +3,7 @@ import { createFuelPlanWatchOutput } from "@/engine/fuelingEngine";
 import { createMockWatchSensorSample } from "@/integrations/watch/mockWatchProvider";
 import {
   resolveWatchProviderStatus,
+  selectableWatchProviders,
   watchProviderRegistry
 } from "@/integrations/watch/watchProviderRegistry";
 
@@ -21,6 +22,22 @@ describe("watch provider registry", () => {
     expect(resolveWatchProviderStatus("samsung")).toBe("real_integration_pending");
     expect(resolveWatchProviderStatus("garmin")).toBe("real_integration_pending");
     expect(resolveWatchProviderStatus("coros")).toBe("real_integration_pending");
+  });
+
+  it("keeps demo as a selectable provider and documents every connection path", () => {
+    expect(selectableWatchProviders).toEqual([
+      "mock",
+      "samsung",
+      "garmin",
+      "coros"
+    ]);
+
+    Object.values(watchProviderRegistry).forEach((provider) => {
+      expect(provider.integrationSteps.length).toBeGreaterThanOrEqual(3);
+      expect(provider.integrationSteps.every((step) => step.title && step.detail)).toBe(
+        true
+      );
+    });
   });
 
   it("mock provider delivers WatchSensorSample data", () => {

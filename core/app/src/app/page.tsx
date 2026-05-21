@@ -11,19 +11,27 @@ export default function HomePage() {
   return (
     <main className="min-h-screen px-4 py-6 md:px-6 md:py-8">
       <div className="mx-auto max-w-[1600px] space-y-8">
-        <header className="space-y-3">
-          <div className="text-[11px] uppercase tracking-[0.26em] text-slate-500">
-            FuelPlan MVP
+        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-3">
+            <div className="text-[11px] uppercase tracking-[0.26em] text-slate-500">
+              FuelPlan MVP
+            </div>
+            <div className="max-w-3xl space-y-2">
+              <h1 className="text-4xl font-semibold tracking-wide text-slate-100 md:text-[3.35rem]">
+                Real-time fueling coach
+              </h1>
+              <p className="max-w-2xl text-sm text-slate-400 md:text-base">
+                Rechts vul je athlete- en segmentdata in. Links toont de watch live
+                wanneer je tijdens de sessie moet eten of drinken.
+              </p>
+            </div>
           </div>
-          <div className="max-w-3xl space-y-2">
-            <h1 className="text-4xl font-semibold tracking-wide text-slate-100 md:text-[3.35rem]">
-              Real-time fueling coach
-            </h1>
-            <p className="max-w-2xl text-sm text-slate-400 md:text-base">
-              Rechts vul je athlete- en segmentdata in. Links toont de watch live
-              wanneer je tijdens de sessie moet eten of drinken.
-            </p>
-          </div>
+          <a
+            href="/live-session"
+            className="w-fit rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100"
+          >
+            Live PWA coach
+          </a>
         </header>
 
         <div className="grid gap-8 xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start">

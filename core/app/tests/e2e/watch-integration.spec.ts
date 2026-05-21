@@ -5,18 +5,28 @@ test("watch integration providers and simulation states", async ({ page }) => {
 
   await page.goto("/");
 
+  await expect(page.getByRole("button", { name: "Demo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Samsung" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Garmin" })).toBeVisible();
   await expect(page.getByRole("button", { name: "COROS" })).toBeVisible();
+  await expect(page.getByText("Demo view").first()).toBeVisible();
+  await expect(page.getByText("Connection path")).toBeVisible();
+
+  await page.getByRole("button", { name: "Demo" }).click();
+  await expect(page.getByText("Demo connected").first()).toBeVisible();
+  await expect(page.getByText("Run local simulation")).toBeVisible();
 
   await page.getByRole("button", { name: "Samsung" }).click();
   await expect(page.getByText("Real integration pending")).toBeVisible();
+  await expect(page.getByText("Build Wear OS companion app")).toBeVisible();
 
   await page.getByRole("button", { name: "Garmin" }).click();
   await expect(page.getByText("Real integration pending")).toBeVisible();
+  await expect(page.getByText("Build Connect IQ Data Field")).toBeVisible();
 
   await page.getByRole("button", { name: "COROS" }).click();
-  await expect(page.getByText("COROS sync mode")).toBeVisible();
+  await expect(page.getByText("COROS sync mode", { exact: true })).toBeVisible();
+  await expect(page.getByText("Use sync mode for MVP")).toBeVisible();
 
   const initialTime = await page.getByTestId("watch-time").innerText();
   const initialDistance = await page.getByTestId("watch-distance").innerText();

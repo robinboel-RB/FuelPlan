@@ -17,6 +17,28 @@ export const corosProvider: WatchProvider = {
     { key: "temperature", availability: "limited" }
   ],
   outputFields: commonWatchOutputFields,
+  integrationSteps: [
+    {
+      title: "Use sync mode for MVP",
+      detail:
+        "Treat COROS as file/API/workout-sync integration, not as a live custom watch app."
+    },
+    {
+      title: "Request partner/API access",
+      detail:
+        "Submit a COROS API application before building account-level activity or workout sync."
+    },
+    {
+      title: "Fallback to FIT exchange",
+      detail:
+        "Support FIT import/export or planned workout sync when partner access is unavailable."
+    },
+    {
+      title: "Keep live prompts limited",
+      detail:
+        "Show FuelPlan planning and post-run analysis until COROS exposes a suitable live route."
+    }
+  ],
   connect: () => {
     // TODO: Explore COROS API / partner approval for post-activity or planned sync.
     // TODO: Support FIT import/export or planned workout sync if partner access is unavailable.
