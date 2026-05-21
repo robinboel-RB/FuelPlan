@@ -58,8 +58,12 @@ De PWA route staat op:
 MVP-route:
 
 ```text
-Fueling timeline -> Web Push op telefoon -> telefoon spiegelt melding naar horloge
+Niveau 1  Fueling timeline -> browser Notification API -> telefoon -> horloge
+Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
 ```
+
+De live session pagina houdt beide routes naast elkaar actief. De demo timeline
+triggert op 10s, 30s, 60s, 90s en 120s en toont per event `N1` en `N2` status.
 
 Belangrijke bestanden:
 

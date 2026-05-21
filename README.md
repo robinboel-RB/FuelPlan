@@ -230,14 +230,19 @@ De MVP heeft daarnaast een PWA-route:
 /live-session
 ```
 
-Doel van deze route:
+Doel van deze route is twee notification-routes tegelijk testen:
 
 ```text
-Fueling timeline -> Web Push op telefoon -> telefoon spiegelt melding naar horloge
+Niveau 1  Fueling timeline -> browser Notification API -> telefoon -> horloge
+Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
 ```
 
 Er wordt bewust geen native Garmin-, Samsung-, Apple Watch- of COROS-app gebouwd
 voor deze MVP. De telefoon blijft de notification gateway.
+
+Niveau 1 vereist dat de pagina open en actief blijft op de telefoon. Niveau 2
+gebruikt de service worker en VAPID-configuratie, zodat alerts via Web Push
+kunnen aankomen wanneer de subscription actief is.
 
 Belangrijke bestanden:
 
@@ -266,12 +271,15 @@ notificationclick
 De live demo timeline stuurt meldingen op:
 
 ```text
-1 min  Drink 150-200ml water
-2 min  Neem 25g carbs
-3 min  Drink opnieuw enkele slokken
-4 min  Check energiegevoel
-5 min  Neem 25g carbs indien intensiteit hoog blijft
+10 sec   Drink 150-200ml water
+30 sec   Neem 25g carbs
+60 sec   Drink opnieuw enkele slokken
+90 sec   Check energiegevoel
+120 sec  Neem 25g carbs indien intensiteit hoog blijft
 ```
+
+De timeline toont per trigger apart of `N1` en `N2` `pending`, `sent` of
+`failed` zijn.
 
 ### VAPID configuratie
 
@@ -302,9 +310,8 @@ niet permanent of betrouwbaar op Vercel serverless door cold starts en meerdere
 instances. Vervang `src/lib/push/subscriptions.ts` later door Supabase, Redis,
 Vercel KV, Upstash of een database.
 
-Echte mobile push moet via HTTPS getest worden, dus bij voorkeur via de Vercel
-URL. `localhost` werkt voor desktop-browserontwikkeling, maar is geen goede
-test voor telefoon plus gekoppeld horloge.
+Echte mobile Web Push moet via HTTPS getest worden, dus bij voorkeur via de
+Vercel URL. Niveau 1 werkt alleen zolang de pagina actief/open blijft.
 
 ## Kernberekeningen
 

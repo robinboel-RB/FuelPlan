@@ -208,7 +208,7 @@ export function PushNotificationManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-            Push status
+            Niveau 2 Web Push status
           </div>
           <div className={`mt-2 w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClassName}`}>
             {formatStatus(status)}
@@ -230,7 +230,7 @@ export function PushNotificationManager() {
             disabled={isBusy || status === "unsupported" || status === "permission-denied"}
             className="rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Enable push notifications
+            Enable Web Push
           </button>
           <button
             type="button"
@@ -238,7 +238,7 @@ export function PushNotificationManager() {
             disabled={isBusy || status !== "subscribed"}
             className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Send test push
+            Send Web Push test
           </button>
           <button
             type="button"
@@ -246,7 +246,7 @@ export function PushNotificationManager() {
             disabled={isBusy || !subscription}
             className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Disable push notifications
+            Disable Web Push
           </button>
         </div>
       </div>
