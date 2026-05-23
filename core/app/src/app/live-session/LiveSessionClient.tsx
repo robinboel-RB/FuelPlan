@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PushNotificationManager } from "@/components/PushNotificationManager";
+import { getPushAuthHeaders } from "@/lib/push/clientIdentity";
 
 type BrowserNotificationStatus =
   | "unsupported"
@@ -154,7 +156,7 @@ export function LiveSessionClient() {
       }
     }
 
-    const wasSent = sendBrowserNotification(
+    const wasSent = await sendBrowserNotification(
       "FuelPlan test",
       "Als je dit op je horloge ziet, werkt de MVP-route.",
       "fuelplan-browser-test"
@@ -214,7 +216,11 @@ export function LiveSessionClient() {
   };
 
   const sendTimelineEvent = async (event: DemoTimelineEvent) => {
-    const browserSent = sendBrowserNotification(event.title, event.body, event.tag);
+    const browserSent = await sendBrowserNotification(
+      event.title,
+      event.body,
+      event.tag
+    );
 
     setEventStatuses((current) => ({
       ...current,
@@ -292,11 +298,11 @@ export function LiveSessionClient() {
               Live Fuel Coach
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Open deze pagina op je telefoon. Niveau 1 gebruikt directe browser
-              notifications zolang de pagina actief is. Niveau 2 gebruikt Web Push
-              via Vercel zodat dezelfde alerts ook als pushmelding kunnen aankomen.
-              Als je horloge telefoonmeldingen spiegelt, verschijnen de alerts ook
-              op je horloge.
+              Open deze pagina in Chrome op Android. Niveau 1 gebruikt Android-
+              compatibele service-worker notifications zolang de pagina actief
+              is. Niveau 2 gebruikt Web Push via Vercel met een device-scoped
+              subscription. Als je horloge telefoonmeldingen spiegelt, verschijnen
+              de alerts ook op je horloge.
             </p>
           </div>
           <a
@@ -306,6 +312,8 @@ export function LiveSessionClient() {
             Dashboard
           </a>
         </header>
+
+        <PwaInstallPrompt />
 
         <section className="grid gap-5 xl:grid-cols-2">
           <NotificationRouteCard
@@ -349,7 +357,8 @@ export function LiveSessionClient() {
               </p>
               <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
                 Voor Niveau 1 moet deze pagina open blijven. Voor Niveau 2 moet
-                Web Push subscribed zijn en moeten VAPID keys in Vercel staan.
+                Web Push subscribed zijn; Vercel verstuurt alleen vaste
+                FuelPlan event-types naar jouw eigen device subscription.
               </p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
@@ -514,12 +523,25 @@ function DeliveryPill({
   );
 }
 
-function sendBrowserNotification(title: string, body: string, tag: string) {
+async function sendBrowserNotification(title: string, body: string, tag: string) {
   if (!isNotificationSupported() || Notification.permission !== "granted") {
     return false;
   }
 
   try {
+    if ("serviceWorker" in navigator) {
+      const registration = await registerServiceWorker();
+      await registration.showNotification(title, {
+        body,
+        tag,
+        icon: "/icons/fuelplan-icon-192.png",
+        badge: "/icons/fuelplan-badge.svg",
+        data: { url: "/live-session" },
+        requireInteraction: true
+      });
+      return true;
+    }
+
     new Notification(title, {
       body,
       tag,
@@ -533,15 +555,17 @@ function sendBrowserNotification(title: string, body: string, tag: string) {
 
 async function sendWebPushNotification(event: DemoTimelineEvent) {
   try {
+    const subscription = await getActivePushSubscription();
+
+    if (!subscription) {
+      return false;
+    }
+
     const response = await fetch("/api/push/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
       body: JSON.stringify({
-        title: event.title,
-        body: event.body,
-        url: "/live-session",
-        tag: event.tag,
-        requireInteraction: true
+        eventType: event.id
       })
     });
     const result = (await response.json()) as PushSendResponse;
@@ -550,6 +574,20 @@ async function sendWebPushNotification(event: DemoTimelineEvent) {
   } catch {
     return false;
   }
+}
+
+async function getActivePushSubscription() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return null;
+  }
+
+  const registration = await registerServiceWorker();
+  return registration.pushManager.getSubscription();
+}
+
+async function registerServiceWorker() {
+  const registration = await navigator.serviceWorker.register("/sw.js");
+  return registration;
 }
 
 function createInitialStatuses() {

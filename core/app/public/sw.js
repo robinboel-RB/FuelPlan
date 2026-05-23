@@ -1,9 +1,58 @@
+const SW_VERSION = "fuelplan-pwa-v2";
+const APP_SHELL_CACHE = `${SW_VERSION}-app-shell`;
+const STATIC_CACHE = `${SW_VERSION}-static`;
+const OFFLINE_URL = "/offline";
+
+const APP_SHELL_URLS = [
+  "/",
+  "/live-session",
+  OFFLINE_URL,
+  "/manifest.json",
+  "/icons/fuelplan-icon-192.png",
+  "/icons/fuelplan-icon-512.png",
+  "/icons/fuelplan-maskable-512.png",
+  "/icons/fuelplan-badge.svg"
+];
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil(
+    caches
+      .open(APP_SHELL_CACHE)
+      .then((cache) => cache.addAll(APP_SHELL_URLS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((cacheNames) =>
+        Promise.all(
+          cacheNames
+            .filter((cacheName) => !cacheName.startsWith(SW_VERSION))
+            .map((cacheName) => caches.delete(cacheName))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+
+  if (request.method !== "GET") {
+    return;
+  }
+
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirstNavigation(request));
+    return;
+  }
+
+  if (isStaticAssetRequest(request)) {
+    event.respondWith(cacheFirstStaticAsset(request));
+  }
 });
 
 self.addEventListener("push", (event) => {
@@ -13,7 +62,7 @@ self.addEventListener("push", (event) => {
 
   const notificationOptions = {
     body: payload.body || "Volgende actie volgt straks",
-    icon: payload.icon || "/icons/fuelplan-icon.svg",
+    icon: payload.icon || "/icons/fuelplan-icon-192.png",
     badge: payload.badge || "/icons/fuelplan-badge.svg",
     tag: payload.tag || "fuelplan-live",
     data: { url },
@@ -60,4 +109,44 @@ function readPushPayload(event) {
   } catch {
     return { title: "Fuel now", body: event.data.text() };
   }
+}
+
+async function networkFirstNavigation(request) {
+  try {
+    const response = await fetch(request);
+    const cache = await caches.open(APP_SHELL_CACHE);
+    cache.put(request, response.clone());
+    return response;
+  } catch {
+    const cachedPage = await caches.match(request);
+    return cachedPage || caches.match(OFFLINE_URL);
+  }
+}
+
+async function cacheFirstStaticAsset(request) {
+  const cachedResponse = await caches.match(request);
+
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+
+  const response = await fetch(request);
+  const cache = await caches.open(STATIC_CACHE);
+  cache.put(request, response.clone());
+  return response;
+}
+
+function isStaticAssetRequest(request) {
+  const url = new URL(request.url);
+
+  if (url.origin !== self.location.origin) {
+    return false;
+  }
+
+  return (
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname === "/manifest.json" ||
+    /\.(?:css|js|png|jpg|jpeg|svg|webp|gif|ico|woff2?)$/i.test(url.pathname)
+  );
 }

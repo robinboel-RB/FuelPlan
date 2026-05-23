@@ -24,7 +24,7 @@ src/ui        visuele React componenten
 src/state     React state en sessie-acties
 src/engine    pure FuelPlan berekeningen en fueling-output
 src/integrations/watch watch provider-contracten en demo/provider adapters
-src/lib/push  Web Push VAPID-configuratie en tijdelijke subscription-store
+src/lib/push  Web Push, device-auth, rate limiting en subscription storage
 src/utils     generieke formatting/parsing helpers
 src/services  leeg in de MVP; alleen voor echte externe integraties
 ```
@@ -64,6 +64,10 @@ Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
 
 De live session pagina houdt beide routes naast elkaar actief. De demo timeline
 triggert op 10s, 30s, 60s, 90s en 120s en toont per event `N1` en `N2` status.
+Op Android gebruikt Niveau 1 `registration.showNotification()` via de service
+worker. Niveau 2 gebruikt een device-scoped PushSubscription met install-id,
+device-id en install-secret headers. Vercel stuurt alleen vaste FuelPlan
+event-types naar de subscription die bij die lokale install hoort.
 
 Belangrijke bestanden:
 
@@ -72,6 +76,8 @@ public/manifest.json
 public/sw.js
 src/components/PushNotificationManager.tsx
 src/app/api/push/*
+src/lib/push/auth.ts
+src/lib/push/events.ts
 src/lib/push/subscriptions.ts
 src/lib/push/webpush.ts
 ```
@@ -88,10 +94,32 @@ Gebruik `.env.example` als template. Zet lokaal in `.env.local` en in Vercel:
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
 VAPID_PRIVATE_KEY=...
 VAPID_SUBJECT=mailto:hello@example.com
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
+PUSH_ADMIN_TOKEN=...
 ```
 
-De in-memory subscription-store is alleen voor de MVP. Vervang die later door
-Supabase, Redis, Vercel KV, Upstash of een database.
+Production storage gebruikt Upstash Redis REST. Zonder Upstash-configuratie
+valt lokale development terug op memory storage; die fallback is niet betrouwbaar
+op Vercel serverless.
+
+De service worker precachet de app shell, gebruikt cache-first voor statische
+assets en network-first voor navigatie met `/offline` als fallback.
+
+`/api/push/send` accepteert geen vrije publieke payloads. De route accepteert
+alleen servergedefinieerde FuelPlan event-types zoals `drink-10`, `fuel-30` en
+`fuel-120`.
+
+## Tests en CI
+
+```bash
+npx tsc --noEmit
+npm run test:unit
+npm run build
+npm run test:e2e
+```
+
+De root workflow `.github/workflows/ci.yml` draait deze checks op GitHub.
 
 ## Vercel
 

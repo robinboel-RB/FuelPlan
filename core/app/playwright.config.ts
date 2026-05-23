@@ -13,6 +13,9 @@ export default defineConfig({
   webServer: {
     command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
+    env: {
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: "test_public_key"
+    },
     reuseExistingServer: !process.env.CI,
     timeout: 120_000
   },

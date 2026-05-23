@@ -1,18 +1,23 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getPushAuthHeaders } from "@/lib/push/clientIdentity";
 
 type PushStatus =
   | "unsupported"
-  | "permission-needed"
+  | "install-required"
+  | "permission-default"
   | "permission-denied"
   | "subscribed"
   | "unsubscribed"
   | "error";
 
+type PushPlatform = "android" | "ios" | "desktop" | "unknown";
+
 interface PushApiSummary {
   ok: boolean;
   error?: string;
+  status?: string;
   total?: number;
   successful?: number;
   failed?: number;
@@ -22,16 +27,18 @@ interface PushApiSummary {
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
 
 export function PushNotificationManager() {
-  const [status, setStatus] = useState<PushStatus>("permission-needed");
+  const [status, setStatus] = useState<PushStatus>("permission-default");
   const [message, setMessage] = useState("Push status wordt gecontroleerd.");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [hasSeenPrePermission, setHasSeenPrePermission] = useState(false);
 
-  const support = useMemo(() => getPushSupport(), []);
+  const platform = useMemo(() => detectPlatform(), []);
+  const support = useMemo(() => getPushSupport(platform), [platform]);
 
   useEffect(() => {
     if (!support.isSupported) {
-      setStatus("unsupported");
+      setStatus(support.status);
       setMessage(support.reason);
       return;
     }
@@ -43,15 +50,24 @@ export function PushNotificationManager() {
     }
 
     void syncExistingSubscription();
-  }, [support.isSupported, support.reason]);
+  }, [support.isSupported, support.reason, support.status]);
 
   const enablePush = async () => {
+    if (!hasSeenPrePermission) {
+      setHasSeenPrePermission(true);
+      setStatus("permission-default");
+      setMessage(
+        "FuelPlan vraagt hierna browser permission. Sta meldingen toe om live alerts via je telefoon en horloge te testen."
+      );
+      return;
+    }
+
     setIsBusy(true);
-    setMessage("Push permission aanvragen.");
+    setMessage("Web Push permission aanvragen.");
 
     try {
       if (!support.isSupported) {
-        setStatus("unsupported");
+        setStatus(support.status);
         setMessage(support.reason);
         return;
       }
@@ -66,13 +82,14 @@ export function PushNotificationManager() {
 
       if (permission === "denied") {
         setStatus("permission-denied");
-        setMessage("Push permission geweigerd in de browser.");
+        setMessage("Notifications zijn geblokkeerd. Pas dit aan in je browserinstellingen.");
+        recordClientPushTelemetry("permission_denied");
         return;
       }
 
       if (permission !== "granted") {
-        setStatus("permission-needed");
-        setMessage("Klik Enable om push permission toe te staan.");
+        setStatus("permission-default");
+        setMessage("Zet notificaties aan om live fueling alerts te testen.");
         return;
       }
 
@@ -87,7 +104,8 @@ export function PushNotificationManager() {
 
       const response = await postJson<PushApiSummary>(
         "/api/push/subscribe",
-        nextSubscription.toJSON()
+        { subscription: nextSubscription.toJSON() },
+        getPushAuthHeaders()
       );
 
       if (!response.ok) {
@@ -96,10 +114,12 @@ export function PushNotificationManager() {
 
       setSubscription(nextSubscription);
       setStatus("subscribed");
-      setMessage("Push actief. Telefoon kan meldingen naar horloge spiegelen.");
+      setMessage("Web Push actief. Telefoon kan meldingen naar horloge spiegelen.");
+      recordClientPushTelemetry("subscribe_success");
     } catch {
       setStatus("error");
       setMessage("Push subscription failed.");
+      recordClientPushTelemetry("subscribe_failure");
     } finally {
       setIsBusy(false);
     }
@@ -107,27 +127,22 @@ export function PushNotificationManager() {
 
   const disablePush = async () => {
     setIsBusy(true);
-    setMessage("Push uitschakelen.");
+    setMessage("Web Push uitschakelen.");
 
     try {
       const registration = await navigator.serviceWorker.ready;
       const activeSubscription =
         subscription || (await registration.pushManager.getSubscription());
 
-      if (!activeSubscription) {
-        setStatus("unsubscribed");
-        setMessage("Geen actieve subscription.");
-        return;
-      }
+      await postJson<PushApiSummary>("/api/push/unsubscribe", {}, getPushAuthHeaders());
 
-      await postJson<PushApiSummary>("/api/push/unsubscribe", {
-        endpoint: activeSubscription.endpoint
-      });
-      await activeSubscription.unsubscribe();
+      if (activeSubscription) {
+        await activeSubscription.unsubscribe();
+      }
 
       setSubscription(null);
       setStatus("unsubscribed");
-      setMessage("Push notifications uitgeschakeld.");
+      setMessage("Web Push notifications uitgeschakeld.");
     } catch {
       setStatus("error");
       setMessage("Disable push failed.");
@@ -151,14 +166,17 @@ export function PushNotificationManager() {
         return;
       }
 
-      const result = await postJson<PushApiSummary>("/api/push/test", {
-        subscription: activeSubscription.toJSON()
-      });
+      const result = await postJson<PushApiSummary>(
+        "/api/push/test",
+        {},
+        getPushAuthHeaders()
+      );
 
       if (!result.ok || (result.successful ?? 0) < 1) {
         throw new Error(result.error || "Test push failed");
       }
 
+      setSubscription(activeSubscription);
       setStatus("subscribed");
       setMessage("Test push verzonden. Check telefoon en gekoppeld horloge.");
     } catch {
@@ -178,20 +196,20 @@ export function PushNotificationManager() {
 
       if (Notification.permission === "denied") {
         setStatus("permission-denied");
-        setMessage("Push permission geweigerd in de browser.");
+        setMessage("Notifications zijn geblokkeerd. Pas dit aan in je browserinstellingen.");
         return;
       }
 
       if (existing) {
         setStatus("subscribed");
-        setMessage("Push subscription actief.");
+        setMessage("Web Push subscription actief.");
         return;
       }
 
-      setStatus(Notification.permission === "default" ? "permission-needed" : "unsubscribed");
+      setStatus(Notification.permission === "default" ? "permission-default" : "unsubscribed");
       setMessage(
         Notification.permission === "default"
-          ? "Klik Enable om push permission toe te staan."
+          ? "Zet Web Push aan om achtergrondmeldingen via Vercel te testen."
           : "Push is toegestaan, maar er is geen actieve subscription."
       );
     } catch {
@@ -216,6 +234,10 @@ export function PushNotificationManager() {
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
             {message}
           </p>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-500">
+            Platform: {platform}. Web Push werkt op Android Chrome via HTTPS.
+            iOS vereist een geinstalleerde PWA.
+          </p>
           {httpsHint ? (
             <p className="mt-2 max-w-xl text-xs leading-5 text-amber-200">
               {httpsHint}
@@ -227,10 +249,10 @@ export function PushNotificationManager() {
           <button
             type="button"
             onClick={enablePush}
-            disabled={isBusy || status === "unsupported" || status === "permission-denied"}
+            disabled={isBusy || status === "unsupported" || status === "permission-denied" || status === "install-required"}
             className="rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Enable Web Push
+            {hasSeenPrePermission ? "Enable Web Push" : "Prepare Web Push"}
           </button>
           <button
             type="button"
@@ -254,24 +276,88 @@ export function PushNotificationManager() {
   );
 }
 
-function getPushSupport() {
+function getPushSupport(platform: PushPlatform): {
+  isSupported: boolean;
+  reason: string;
+  status: PushStatus;
+} {
   if (typeof window === "undefined") {
-    return { isSupported: false, reason: "Browseromgeving niet beschikbaar." };
+    return {
+      isSupported: false,
+      reason: "Browseromgeving niet beschikbaar.",
+      status: "unsupported"
+    };
+  }
+
+  if (platform === "ios" && !isStandaloneDisplay()) {
+    return {
+      isSupported: false,
+      reason: "Installeer FuelPlan eerst op iOS via Voeg toe aan beginscherm.",
+      status: "install-required"
+    };
   }
 
   if (!("serviceWorker" in navigator)) {
-    return { isSupported: false, reason: "Service worker niet beschikbaar." };
+    return {
+      isSupported: false,
+      reason: "Service worker niet beschikbaar.",
+      status: "unsupported"
+    };
   }
 
   if (!("PushManager" in window)) {
-    return { isSupported: false, reason: "Browser ondersteunt geen PushManager." };
+    return {
+      isSupported: false,
+      reason: "Browser ondersteunt geen PushManager.",
+      status: "unsupported"
+    };
   }
 
   if (!("Notification" in window)) {
-    return { isSupported: false, reason: "Browser ondersteunt geen notifications." };
+    return {
+      isSupported: false,
+      reason: "Browser ondersteunt geen notifications.",
+      status: "unsupported"
+    };
   }
 
-  return { isSupported: true, reason: "" };
+  return { isSupported: true, reason: "", status: "permission-default" };
+}
+
+function detectPlatform(): PushPlatform {
+  if (typeof window === "undefined") {
+    return "unknown";
+  }
+
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isIos =
+    /iphone|ipad|ipod/.test(userAgent) ||
+    (userAgent.includes("mac") && "ontouchend" in document);
+
+  if (isIos) {
+    return "ios";
+  }
+
+  if (userAgent.includes("android")) {
+    return "android";
+  }
+
+  return "desktop";
+}
+
+function isStandaloneDisplay() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const navigatorWithStandalone = window.navigator as Navigator & {
+    standalone?: boolean;
+  };
+
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigatorWithStandalone.standalone === true
+  );
 }
 
 function getHttpsHint() {
@@ -289,14 +375,17 @@ function getHttpsHint() {
 }
 
 async function registerServiceWorker() {
-  const registration = await navigator.serviceWorker.register("/sw.js");
-  return registration;
+  return navigator.serviceWorker.register("/sw.js");
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function postJson<T>(
+  url: string,
+  body: unknown,
+  extraHeaders: Record<string, string>
+): Promise<T> {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(body)
   });
 
@@ -316,12 +405,20 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+function recordClientPushTelemetry(event: string) {
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[fuelplan-push-client]", event);
+  }
+}
+
 function formatStatus(status: PushStatus) {
   switch (status) {
     case "unsupported":
       return "unsupported";
-    case "permission-needed":
-      return "permission needed";
+    case "install-required":
+      return "install required";
+    case "permission-default":
+      return "permission default";
     case "permission-denied":
       return "permission denied";
     case "subscribed":
@@ -338,7 +435,7 @@ function resolveStatusClassName(status: PushStatus) {
     return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
   }
 
-  if (status === "permission-needed" || status === "unsubscribed") {
+  if (status === "permission-default" || status === "unsubscribed" || status === "install-required") {
     return "border-amber-400/40 bg-amber-400/10 text-amber-200";
   }
 

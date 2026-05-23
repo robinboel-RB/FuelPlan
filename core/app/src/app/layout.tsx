@@ -7,8 +7,11 @@ export const metadata: Metadata = {
   applicationName: "FuelPlan Live Coach",
   manifest: "/manifest.json",
   icons: {
-    icon: "/icons/fuelplan-icon.svg",
-    apple: "/icons/fuelplan-icon.svg"
+    icon: [
+      { url: "/icons/fuelplan-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/fuelplan-icon-512.png", sizes: "512x512", type: "image/png" }
+    ],
+    apple: "/icons/fuelplan-icon-192.png"
   },
   appleWebApp: {
     capable: true,

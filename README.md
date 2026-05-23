@@ -50,7 +50,7 @@ core/app/src/
 ├── engine/     kernberekeningen, fueling en FuelPlan watch-output
 ├── integrations/watch/
 │               provider contracts en watch adapters
-├── lib/push/   Web Push configuratie en tijdelijke subscription-store
+├── lib/push/   Web Push, device-auth, rate limiting en subscription storage
 ├── state/      React sessie-state, timer en intake-acties
 ├── ui/         setup- en guidance-componenten
 ├── utils/      generieke formatting/parsing helpers
@@ -92,8 +92,12 @@ en signed number formatting.
 `src/lib/push` bevat de PWA/Web Push server utilities:
 
 ```text
-subscriptions.ts  tijdelijke in-memory subscription store
-webpush.ts        VAPID-configuratie, payload-validatie en sending
+identity.ts       client-install/device headers
+auth.ts           route authorization en secret hashing
+subscriptions.ts  storage adapter met Upstash productie-store
+events.ts         vaste FuelPlan push event-types
+delivery.ts       delivery + 404/410 cleanup
+webpush.ts        VAPID-configuratie en sending
 ```
 
 `core/app/public` bevat de PWA-assets:
@@ -240,9 +244,15 @@ Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
 Er wordt bewust geen native Garmin-, Samsung-, Apple Watch- of COROS-app gebouwd
 voor deze MVP. De telefoon blijft de notification gateway.
 
-Niveau 1 vereist dat de pagina open en actief blijft op de telefoon. Niveau 2
-gebruikt de service worker en VAPID-configuratie, zodat alerts via Web Push
-kunnen aankomen wanneer de subscription actief is.
+Niveau 1 gebruikt op Android ook de service-worker notification surface
+(`registration.showNotification`) omdat `new Notification(...)` op mobiele
+browsers onbetrouwbaar is. De timer zelf blijft client-side, dus de pagina moet
+open blijven.
+
+Niveau 2 gebruikt de service worker, VAPID-configuratie en een device-scoped
+PushSubscription. De client bewaart lokaal een install-id, device-id en secret.
+Elke push API call stuurt die headers mee, zodat Vercel alleen naar de eigenaar
+van die subscription kan sturen.
 
 Belangrijke bestanden:
 
@@ -255,6 +265,8 @@ core/app/src/app/api/push/subscribe/route.ts
 core/app/src/app/api/push/unsubscribe/route.ts
 core/app/src/app/api/push/test/route.ts
 core/app/src/app/api/push/send/route.ts
+core/app/src/lib/push/auth.ts
+core/app/src/lib/push/events.ts
 core/app/src/lib/push/subscriptions.ts
 core/app/src/lib/push/webpush.ts
 ```
@@ -264,9 +276,13 @@ De service worker verwerkt:
 ```text
 install
 activate
+fetch caching/offline fallback
 push
 notificationclick
 ```
+
+Statische assets worden cache-first geladen. Navigaties zijn network-first en
+vallen bij offline terug op `/offline`.
 
 De live demo timeline stuurt meldingen op:
 
@@ -303,15 +319,46 @@ VAPID_SUBJECT=mailto:hello@example.com
 Alleen `NEXT_PUBLIC_VAPID_PUBLIC_KEY` mag naar de browser. `VAPID_PRIVATE_KEY`
 blijft server-side en mag nooit in de repo of clientbundel komen.
 
+### Persistente subscription store
+
+Productie gebruikt Upstash Redis REST via:
+
+```text
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
+PUSH_ADMIN_TOKEN=...
+```
+
+`PUSH_ADMIN_TOKEN` is alleen voor expliciete admin-maintenance, bijvoorbeeld
+een gecontroleerde broadcasttest. Normale app calls werken per install/device.
+
+Zonder Upstash-configuratie gebruikt lokale development een memory fallback.
+Die fallback is bewust alleen voor dev en niet betrouwbaar op Vercel serverless.
+
+### Push security
+
+De public routes `/api/push/subscribe`, `/unsubscribe`, `/test` en `/send`
+controleren:
+
+```text
+x-fuelplan-install-id
+x-fuelplan-device-id
+x-fuelplan-install-secret
+```
+
+`/api/push/send` accepteert geen vrije publieke payloads. De route accepteert
+alleen vaste servergedefinieerde event types zoals `drink-10`, `fuel-30` en
+`fuel-120`. Ongeldige of ongeauthoriseerde requests krijgen `401`, `400`, `404`
+of `429`.
+
 ### Push MVP beperkingen
 
-De subscription-store is in-memory. Dat is bruikbaar voor lokale demo's, maar
-niet permanent of betrouwbaar op Vercel serverless door cold starts en meerdere
-instances. Vervang `src/lib/push/subscriptions.ts` later door Supabase, Redis,
-Vercel KV, Upstash of een database.
-
 Echte mobile Web Push moet via HTTPS getest worden, dus bij voorkeur via de
-Vercel URL. Niveau 1 werkt alleen zolang de pagina actief/open blijft.
+Vercel URL. Niveau 1 werkt alleen zolang de pagina actief/open blijft. Voor
+Android test je best in Chrome en controleer je dat meldingen voor de site en
+telefoonmelding-spiegeling naar het horloge aan staan.
+
+Voor iOS Web Push moet de app als PWA op het beginscherm geinstalleerd zijn.
 
 ## Kernberekeningen
 
@@ -489,9 +536,42 @@ Vercel environment variables voor Web Push:
 NEXT_PUBLIC_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY
 VAPID_SUBJECT
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+PUSH_ADMIN_TOKEN
 ```
 
 Na een push naar de gekoppelde GitHub repo deployt Vercel automatisch.
+
+## CI
+
+GitHub Actions draait voor `main` en pull requests:
+
+```text
+npm ci
+npx tsc --noEmit
+npm run test:unit
+npm run build
+npx playwright install --with-deps chromium
+npm run test:e2e
+```
+
+De Playwright suite controleert onder andere `/live-session`, service worker
+registratie, offline fallback en push API auth failures. De bestaande
+watch-integratie test blijft behouden.
+
+## CHANGELOG
+
+### Unreleased
+
+- PWA service worker uitgebreid met app-shell precache, cache-first statische
+  assets, network-first navigatie en `/offline` fallback.
+- Manifest uitgebreid naar PNG iconset met maskable icon en install helper UI.
+- Web Push storage vervangen door adapterarchitectuur met Upstash Redis REST
+  voor productie en memory fallback voor lokale dev.
+- Pushroutes beveiligd met device-scoped ownership headers, rate limiting en
+  vaste servergedefinieerde FuelPlan event-types.
+- Tests en GitHub Actions toegevoegd voor build, unit tests en Playwright E2E.
 
 ## Release maken
 

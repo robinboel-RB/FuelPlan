@@ -1,10 +1,6 @@
 import webpush from "web-push";
 import type { PushSubscription } from "web-push";
-import {
-  getSubscriptions,
-  removeSubscription,
-  type StoredPushSubscription
-} from "@/lib/push/subscriptions";
+import type { StoredPushSubscription } from "@/lib/push/subscriptions";
 
 export interface FuelPlanPushPayload {
   title: string;
@@ -25,34 +21,11 @@ export interface PushSendSummary {
 }
 
 const DEFAULT_PUSH_URL = "/live-session";
-const DEFAULT_PUSH_ICON = "/icons/fuelplan-icon.svg";
+const DEFAULT_PUSH_ICON = "/icons/fuelplan-icon-192.png";
 const DEFAULT_PUSH_BADGE = "/icons/fuelplan-badge.svg";
+const PUSH_TTL_SECONDS = 60 * 30;
 
 let isConfigured = false;
-
-export function validatePushPayload(value: unknown): FuelPlanPushPayload | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const candidate = value as Partial<FuelPlanPushPayload>;
-  const title = sanitizeText(candidate.title, 80);
-  const body = sanitizeText(candidate.body, 160);
-
-  if (!title || !body) {
-    return null;
-  }
-
-  return {
-    title,
-    body,
-    url: sanitizeUrl(candidate.url),
-    tag: sanitizeText(candidate.tag, 64) || "fuelplan-live",
-    icon: sanitizeUrl(candidate.icon) || DEFAULT_PUSH_ICON,
-    badge: sanitizeUrl(candidate.badge) || DEFAULT_PUSH_BADGE,
-    requireInteraction: Boolean(candidate.requireInteraction)
-  };
-}
 
 export function createTestPushPayload(): FuelPlanPushPayload {
   return {
@@ -66,28 +39,41 @@ export function createTestPushPayload(): FuelPlanPushPayload {
   };
 }
 
-export async function sendPushToAll(payload: FuelPlanPushPayload) {
-  return sendPushToStoredSubscriptions(getSubscriptions(), payload);
+export async function sendPushToStoredSubscription(
+  stored: StoredPushSubscription,
+  payload: FuelPlanPushPayload
+) {
+  return sendPushToStoredSubscriptions([stored], payload);
 }
 
 export async function sendPushToSubscription(
   subscription: PushSubscription,
   payload: FuelPlanPushPayload
 ) {
+  const now = Date.now();
+
   return sendPushToStoredSubscriptions(
     [
       {
+        key: "direct",
+        installId: "direct",
+        deviceId: "direct",
+        userId: "anonymous",
+        secretHash: "",
         endpoint: subscription.endpoint,
+        endpointHash: "",
         subscription,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+        failureCount: 0
       }
     ],
     payload
   );
 }
 
-async function sendPushToStoredSubscriptions(
+export async function sendPushToStoredSubscriptions(
   subscriptions: StoredPushSubscription[],
   payload: FuelPlanPushPayload
 ): Promise<PushSendSummary> {
@@ -107,7 +93,7 @@ async function sendPushToStoredSubscriptions(
         await webpush.sendNotification(
           stored.subscription,
           JSON.stringify(normalizePayload(payload)),
-          { TTL: 60 * 30, urgency: "high" }
+          { TTL: PUSH_TTL_SECONDS, urgency: "high" }
         );
         summary.successful += 1;
       } catch (error) {
@@ -117,7 +103,6 @@ async function sendPushToStoredSubscriptions(
         summary.errors.push({ endpoint: stored.endpoint, statusCode });
 
         if (statusCode === 404 || statusCode === 410) {
-          removeSubscription(stored.endpoint);
           summary.removed += 1;
         }
       }
@@ -147,12 +132,12 @@ function configureWebPush() {
 
 function normalizePayload(payload: FuelPlanPushPayload): Required<FuelPlanPushPayload> {
   return {
-    title: payload.title,
-    body: payload.body,
-    url: payload.url || DEFAULT_PUSH_URL,
-    tag: payload.tag || "fuelplan-live",
-    icon: payload.icon || DEFAULT_PUSH_ICON,
-    badge: payload.badge || DEFAULT_PUSH_BADGE,
+    title: sanitizeText(payload.title, 80) || "Fuel now",
+    body: sanitizeText(payload.body, 160) || "Volgende actie volgt straks",
+    url: sanitizeUrl(payload.url) || DEFAULT_PUSH_URL,
+    tag: sanitizeText(payload.tag, 64) || "fuelplan-live",
+    icon: sanitizeUrl(payload.icon) || DEFAULT_PUSH_ICON,
+    badge: sanitizeUrl(payload.badge) || DEFAULT_PUSH_BADGE,
     requireInteraction: Boolean(payload.requireInteraction)
   };
 }
@@ -173,6 +158,10 @@ function sanitizeUrl(value: unknown) {
   }
 
   return url.slice(0, 240);
+}
+
+export function isExpiredPushStatus(statusCode: number | undefined) {
+  return statusCode === 404 || statusCode === 410;
 }
 
 function readStatusCode(error: unknown) {
