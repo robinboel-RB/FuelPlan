@@ -59,6 +59,10 @@ export function getPushSubscriptionStore() {
   return store;
 }
 
+export function getPushSubscriptionStorageMode() {
+  return hasUpstashConfig() ? "upstash" : "memory";
+}
+
 export function parsePushSubscription(value: unknown): PushSubscription | null {
   if (!value || typeof value !== "object") {
     return null;

@@ -68,6 +68,9 @@ Op Android gebruikt Niveau 1 `registration.showNotification()` via de service
 worker. Niveau 2 gebruikt een device-scoped PushSubscription met install-id,
 device-id en install-secret headers. Vercel stuurt alleen vaste FuelPlan
 event-types naar de subscription die bij die lokale install hoort.
+De client synchroniseert de actieve browser subscription opnieuw bij page-load,
+test push en elk demo-event, zodat de memory fallback ook na een cold start
+herstelt.
 
 Belangrijke bestanden:
 
@@ -109,6 +112,9 @@ assets en network-first voor navigatie met `/offline` als fallback.
 `/api/push/send` accepteert geen vrije publieke payloads. De route accepteert
 alleen servergedefinieerde FuelPlan event-types zoals `drink-10`, `fuel-30` en
 `fuel-120`.
+
+`/api/push/status` toont voor de huidige install de actieve storage mode en of
+de server-side subscription bestaat.
 
 ## Tests en CI
 

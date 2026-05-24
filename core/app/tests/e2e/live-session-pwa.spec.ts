@@ -90,8 +90,10 @@ test("push API routes reject unauthenticated public requests", async ({ request 
   const send = await request.post("/api/push/send", {
     data: { eventType: "drink-10" }
   });
+  const status = await request.post("/api/push/status", { data: {} });
 
   expect(subscribe.status()).toBe(401);
   expect(testPush.status()).toBe(401);
   expect(send.status()).toBe(401);
+  expect(status.status()).toBe(401);
 });

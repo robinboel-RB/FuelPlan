@@ -565,7 +565,8 @@ async function sendWebPushNotification(event: DemoTimelineEvent) {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
       body: JSON.stringify({
-        eventType: event.id
+        eventType: event.id,
+        subscription: subscription.toJSON()
       })
     });
     const result = (await response.json()) as PushSendResponse;

@@ -254,6 +254,11 @@ PushSubscription. De client bewaart lokaal een install-id, device-id en secret.
 Elke push API call stuurt die headers mee, zodat Vercel alleen naar de eigenaar
 van die subscription kan sturen.
 
+De live page synchroniseert de actieve browser `PushSubscription` opnieuw bij
+page-load, bij `Send Web Push test` en bij elk demo-event. Daardoor blijft
+Niveau 2 bruikbaar wanneer een Vercel serverless instance de memory fallback
+kwijt is. Met Upstash blijft dit ook persistent over cold starts heen.
+
 Belangrijke bestanden:
 
 ```text
@@ -265,6 +270,7 @@ core/app/src/app/api/push/subscribe/route.ts
 core/app/src/app/api/push/unsubscribe/route.ts
 core/app/src/app/api/push/test/route.ts
 core/app/src/app/api/push/send/route.ts
+core/app/src/app/api/push/status/route.ts
 core/app/src/lib/push/auth.ts
 core/app/src/lib/push/events.ts
 core/app/src/lib/push/subscriptions.ts
@@ -350,6 +356,9 @@ x-fuelplan-install-secret
 alleen vaste servergedefinieerde event types zoals `drink-10`, `fuel-30` en
 `fuel-120`. Ongeldige of ongeauthoriseerde requests krijgen `401`, `400`, `404`
 of `429`.
+
+`/api/push/status` geeft voor de huidige install terug of er server-side een
+subscription bekend is en welke storage mode actief is (`upstash` of `memory`).
 
 ### Push MVP beperkingen
 

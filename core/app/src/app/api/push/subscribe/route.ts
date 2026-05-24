@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getPushSubscriptionStore,
+  getPushSubscriptionStorageMode,
   parsePushSubscription,
 } from "@/lib/push/subscriptions";
 import { readPushRequestAuth } from "@/lib/push/auth";
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    storageMode: getPushSubscriptionStorageMode(),
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt

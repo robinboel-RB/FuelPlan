@@ -52,6 +52,7 @@ export async function POST(request: Request) {
       : "own";
   const records = await resolveTargetSubscriptions({
     auth,
+    body,
     isAdmin,
     scope,
     store

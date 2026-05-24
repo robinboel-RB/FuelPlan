@@ -17,11 +17,16 @@ type PushPlatform = "android" | "ios" | "desktop" | "unknown";
 interface PushApiSummary {
   ok: boolean;
   error?: string;
+  storageMode?: "upstash" | "memory";
+  hasServerSubscription?: boolean;
   status?: string;
   total?: number;
   successful?: number;
   failed?: number;
   removed?: number;
+  lastSuccessAt?: number;
+  lastFailureAt?: number;
+  failureCount?: number;
 }
 
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
@@ -32,6 +37,8 @@ export function PushNotificationManager() {
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [hasSeenPrePermission, setHasSeenPrePermission] = useState(false);
+  const [serverStorageMode, setServerStorageMode] = useState<string>("unknown");
+  const [hasServerSubscription, setHasServerSubscription] = useState(false);
 
   const platform = useMemo(() => detectPlatform(), []);
   const support = useMemo(() => getPushSupport(platform), [platform]);
@@ -102,11 +109,7 @@ export function PushNotificationManager() {
           applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
         }));
 
-      const response = await postJson<PushApiSummary>(
-        "/api/push/subscribe",
-        { subscription: nextSubscription.toJSON() },
-        getPushAuthHeaders()
-      );
+      const response = await ensureServerSubscription(nextSubscription);
 
       if (!response.ok) {
         throw new Error(response.error || "Subscribe failed");
@@ -114,7 +117,7 @@ export function PushNotificationManager() {
 
       setSubscription(nextSubscription);
       setStatus("subscribed");
-      setMessage("Web Push actief. Telefoon kan meldingen naar horloge spiegelen.");
+      setMessage("Web Push actief en server-side geregistreerd.");
       recordClientPushTelemetry("subscribe_success");
     } catch {
       setStatus("error");
@@ -141,6 +144,7 @@ export function PushNotificationManager() {
       }
 
       setSubscription(null);
+      setHasServerSubscription(false);
       setStatus("unsubscribed");
       setMessage("Web Push notifications uitgeschakeld.");
     } catch {
@@ -166,9 +170,15 @@ export function PushNotificationManager() {
         return;
       }
 
+      const syncResult = await ensureServerSubscription(activeSubscription);
+
+      if (!syncResult.ok) {
+        throw new Error(syncResult.error || "Server subscription sync failed");
+      }
+
       const result = await postJson<PushApiSummary>(
         "/api/push/test",
-        {},
+        { subscription: activeSubscription.toJSON() },
         getPushAuthHeaders()
       );
 
@@ -201,9 +211,27 @@ export function PushNotificationManager() {
       }
 
       if (existing) {
+        const response = await ensureServerSubscription(existing);
+
+        if (!response.ok) {
+          setStatus("error");
+          setMessage("Browser subscription bestaat, maar server sync failed.");
+          return;
+        }
+
         setStatus("subscribed");
-        setMessage("Web Push subscription actief.");
+        setMessage("Web Push subscription actief en server-side gesynct.");
         return;
+      }
+
+      const response = await postJson<PushApiSummary>(
+        "/api/push/status",
+        {},
+        getPushAuthHeaders()
+      ).catch(() => null);
+
+      if (response?.ok) {
+        updateServerState(response);
       }
 
       setStatus(Notification.permission === "default" ? "permission-default" : "unsubscribed");
@@ -238,6 +266,16 @@ export function PushNotificationManager() {
             Platform: {platform}. Web Push werkt op Android Chrome via HTTPS.
             iOS vereist een geinstalleerde PWA.
           </p>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-500">
+            Server: {hasServerSubscription ? "registered" : "not registered"}.
+            Storage: {serverStorageMode}.
+          </p>
+          {serverStorageMode === "memory" ? (
+            <p className="mt-2 max-w-xl text-xs leading-5 text-amber-200">
+              Memory fallback is bruikbaar voor demo's. Voeg Upstash env vars toe
+              voor persistente Vercel delivery.
+            </p>
+          ) : null}
           {httpsHint ? (
             <p className="mt-2 max-w-xl text-xs leading-5 text-amber-200">
               {httpsHint}
@@ -274,6 +312,32 @@ export function PushNotificationManager() {
       </div>
     </section>
   );
+
+  async function ensureServerSubscription(activeSubscription: PushSubscription) {
+    const response = await postJson<PushApiSummary>(
+      "/api/push/subscribe",
+      { subscription: activeSubscription.toJSON() },
+      getPushAuthHeaders()
+    );
+
+    updateServerState(response);
+    return response;
+  }
+
+  function updateServerState(response: PushApiSummary) {
+    if (response.storageMode) {
+      setServerStorageMode(response.storageMode);
+    }
+
+    if (typeof response.hasServerSubscription === "boolean") {
+      setHasServerSubscription(response.hasServerSubscription);
+      return;
+    }
+
+    if (response.ok && response.status) {
+      setHasServerSubscription(true);
+    }
+  }
 }
 
 function getPushSupport(platform: PushPlatform): {
