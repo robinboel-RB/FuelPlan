@@ -1,8 +1,10 @@
 import { createHash } from "crypto";
+import { del, get, list, put } from "@vercel/blob";
 import type { PushSubscription } from "web-push";
 import { hasUpstashConfig, upstashCommand } from "@/lib/push/upstash";
 
 export type PushSubscriptionStatus = "active" | "revoked" | "failed";
+export type PushSubscriptionStorageMode = "blob" | "upstash" | "memory";
 
 export interface StoredPushSubscription {
   key: string;
@@ -45,21 +47,29 @@ export interface PushSubscriptionStore {
 }
 
 const ACTIVE_SET_KEY = "fuelplan:push:subscriptions:active";
+const BLOB_SUBSCRIPTIONS_PREFIX = "fuelplan/push/subscriptions/";
+const BLOB_ENDPOINTS_PREFIX = "fuelplan/push/endpoints/";
 const DEFAULT_USER_ID = "anonymous";
 
 let store: PushSubscriptionStore | null = null;
 
 export function getPushSubscriptionStore() {
   if (!store) {
-    store = hasUpstashConfig()
-      ? new UpstashPushSubscriptionStore()
-      : new LocalMemoryPushSubscriptionStore();
+    store = hasBlobConfig()
+      ? new BlobPushSubscriptionStore()
+      : hasUpstashConfig()
+        ? new UpstashPushSubscriptionStore()
+        : new LocalMemoryPushSubscriptionStore();
   }
 
   return store;
 }
 
-export function getPushSubscriptionStorageMode() {
+export function getPushSubscriptionStorageMode(): PushSubscriptionStorageMode {
+  if (hasBlobConfig()) {
+    return "blob";
+  }
+
   return hasUpstashConfig() ? "upstash" : "memory";
 }
 
@@ -194,6 +204,122 @@ class LocalMemoryPushSubscriptionStore implements PushSubscriptionStore {
 
   async countActive() {
     return (await this.listActive()).length;
+  }
+}
+
+class BlobPushSubscriptionStore implements PushSubscriptionStore {
+  async upsert(input: SavePushSubscriptionInput) {
+    const now = Date.now();
+    const key = createOwnerKey(input.installId, input.deviceId);
+    const endpointHash = hashEndpoint(input.subscription.endpoint);
+    const existing = await this.getByOwner(input.installId, input.deviceId);
+
+    const record: StoredPushSubscription = {
+      key,
+      installId: input.installId,
+      deviceId: input.deviceId,
+      userId: input.userId || DEFAULT_USER_ID,
+      secretHash: input.secretHash,
+      endpoint: input.subscription.endpoint,
+      endpointHash,
+      subscription: input.subscription,
+      status: "active",
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      lastSuccessAt: existing?.lastSuccessAt,
+      lastFailureAt: existing?.lastFailureAt,
+      failureCount: existing?.failureCount ?? 0
+    };
+
+    await putJson(createOwnerBlobPath(input.installId, input.deviceId), record);
+    await putJson(createEndpointBlobPath(endpointHash), {
+      installId: input.installId,
+      deviceId: input.deviceId
+    });
+
+    return record;
+  }
+
+  async getByOwner(installId: string, deviceId: string) {
+    return getJson<StoredPushSubscription>(createOwnerBlobPath(installId, deviceId));
+  }
+
+  async removeByOwner(installId: string, deviceId: string) {
+    const record = await this.getByOwner(installId, deviceId);
+    const paths = [createOwnerBlobPath(installId, deviceId)];
+
+    if (record) {
+      paths.push(createEndpointBlobPath(record.endpointHash));
+    }
+
+    await del(paths);
+    return Boolean(record);
+  }
+
+  async removeByEndpoint(endpoint: string) {
+    const endpointHash = hashEndpoint(endpoint);
+    const endpointPath = createEndpointBlobPath(endpointHash);
+    const owner = await getJson<{ installId: string; deviceId: string }>(endpointPath);
+
+    if (!owner) {
+      return false;
+    }
+
+    await del([endpointPath, createOwnerBlobPath(owner.installId, owner.deviceId)]);
+    return true;
+  }
+
+  async markSuccess(installId: string, deviceId: string) {
+    await this.updateRecord(installId, deviceId, (record) => ({
+      ...record,
+      status: "active",
+      updatedAt: Date.now(),
+      lastSuccessAt: Date.now(),
+      failureCount: 0
+    }));
+  }
+
+  async markFailure(
+    installId: string,
+    deviceId: string,
+    options: { permanent?: boolean } = {}
+  ) {
+    await this.updateRecord(installId, deviceId, (record) => ({
+      ...record,
+      status: options.permanent ? "revoked" : "failed",
+      updatedAt: Date.now(),
+      lastFailureAt: Date.now(),
+      failureCount: record.failureCount + 1
+    }));
+  }
+
+  async listActive(limit = 100) {
+    const result = await list({ prefix: BLOB_SUBSCRIPTIONS_PREFIX, limit });
+    const records = await Promise.all(
+      result.blobs.map((blob) => getJson<StoredPushSubscription>(blob.pathname))
+    );
+
+    return records.filter(
+      (record): record is StoredPushSubscription => record?.status === "active"
+    );
+  }
+
+  async countActive() {
+    return (await this.listActive()).length;
+  }
+
+  private async updateRecord(
+    installId: string,
+    deviceId: string,
+    update: (record: StoredPushSubscription) => StoredPushSubscription
+  ) {
+    const record = await this.getByOwner(installId, deviceId);
+
+    if (!record) {
+      return;
+    }
+
+    await putJson(createOwnerBlobPath(installId, deviceId), update(record));
   }
 }
 
@@ -341,10 +467,72 @@ function createOwnerKey(installId: string, deviceId: string) {
   return `fuelplan:push:subscription:${installId}:${deviceId}`;
 }
 
+function createOwnerBlobPath(installId: string, deviceId: string) {
+  return `${BLOB_SUBSCRIPTIONS_PREFIX}${sanitizePathSegment(installId)}/${sanitizePathSegment(deviceId)}.json`;
+}
+
 function createEndpointKey(endpointHash: string) {
   return `fuelplan:push:endpoint:${endpointHash}`;
 }
 
+function createEndpointBlobPath(endpointHash: string) {
+  return `${BLOB_ENDPOINTS_PREFIX}${endpointHash}.json`;
+}
+
 function hashEndpoint(endpoint: string) {
   return createHash("sha256").update(endpoint).digest("hex");
+}
+
+function hasBlobConfig() {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+async function putJson(pathname: string, value: unknown) {
+  await put(pathname, JSON.stringify(value), {
+    access: "private",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json"
+  });
+}
+
+async function getJson<T>(pathname: string) {
+  const result = await get(pathname, { access: "private", useCache: false }).catch(
+    () => null
+  );
+
+  if (!result || result.statusCode !== 200 || !result.stream) {
+    return null;
+  }
+
+  const text = await readStreamAsText(result.stream);
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
+async function readStreamAsText(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    text += decoder.decode(value, { stream: true });
+  }
+
+  text += decoder.decode();
+  return text;
+}
+
+function sanitizePathSegment(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 96);
 }

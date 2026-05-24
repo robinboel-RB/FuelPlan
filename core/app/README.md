@@ -71,6 +71,7 @@ event-types naar de subscription die bij die lokale install hoort.
 De client synchroniseert de actieve browser subscription opnieuw bij page-load,
 test push en elk demo-event, zodat de memory fallback ook na een cold start
 herstelt.
+Met Vercel Blob blijft Niveau 2 persistent over Vercel cold starts heen.
 
 Belangrijke bestanden:
 
@@ -97,14 +98,16 @@ Gebruik `.env.example` als template. Zet lokaal in `.env.local` en in Vercel:
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
 VAPID_PRIVATE_KEY=...
 VAPID_SUBJECT=mailto:hello@example.com
+BLOB_READ_WRITE_TOKEN=...
 UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
 PUSH_ADMIN_TOKEN=...
 ```
 
-Production storage gebruikt Upstash Redis REST. Zonder Upstash-configuratie
-valt lokale development terug op memory storage; die fallback is niet betrouwbaar
-op Vercel serverless.
+Production storage gebruikt eerst Vercel Blob. Upstash Redis REST blijft als
+latere optionele fallback in de adapter. Zonder Blob of Upstash-configuratie
+valt lokale development terug op memory storage; die fallback is niet
+betrouwbaar op Vercel serverless.
 
 De service worker precachet de app shell, gebruikt cache-first voor statische
 assets en network-first voor navigatie met `/offline` als fallback.
@@ -113,8 +116,8 @@ assets en network-first voor navigatie met `/offline` als fallback.
 alleen servergedefinieerde FuelPlan event-types zoals `drink-10`, `fuel-30` en
 `fuel-120`.
 
-`/api/push/status` toont voor de huidige install de actieve storage mode en of
-de server-side subscription bestaat.
+`/api/push/status` toont voor de huidige install de actieve storage mode
+(`blob`, `upstash` of `memory`) en of de server-side subscription bestaat.
 
 ## Tests en CI
 

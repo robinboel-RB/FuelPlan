@@ -17,7 +17,7 @@ type PushPlatform = "android" | "ios" | "desktop" | "unknown";
 interface PushApiSummary {
   ok: boolean;
   error?: string;
-  storageMode?: "upstash" | "memory";
+  storageMode?: "blob" | "upstash" | "memory";
   hasServerSubscription?: boolean;
   status?: string;
   total?: number;
@@ -270,10 +270,16 @@ export function PushNotificationManager() {
             Server: {hasServerSubscription ? "registered" : "not registered"}.
             Storage: {serverStorageMode}.
           </p>
+          {serverStorageMode === "blob" ? (
+            <p className="mt-2 max-w-xl text-xs leading-5 text-emerald-200">
+              Blob storage is actief. Niveau 2 blijft persistent over Vercel
+              cold starts heen.
+            </p>
+          ) : null}
           {serverStorageMode === "memory" ? (
             <p className="mt-2 max-w-xl text-xs leading-5 text-amber-200">
-              Memory fallback is bruikbaar voor demo's. Voeg Upstash env vars toe
-              voor persistente Vercel delivery.
+              Memory fallback is bruikbaar voor demo's. Voeg Vercel Blob toe
+              voor persistente delivery.
             </p>
           ) : null}
           {httpsHint ? (

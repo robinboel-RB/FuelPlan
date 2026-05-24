@@ -94,7 +94,7 @@ en signed number formatting.
 ```text
 identity.ts       client-install/device headers
 auth.ts           route authorization en secret hashing
-subscriptions.ts  storage adapter met Upstash productie-store
+subscriptions.ts  storage adapter met Blob, Upstash en memory fallback
 events.ts         vaste FuelPlan push event-types
 delivery.ts       delivery + 404/410 cleanup
 webpush.ts        VAPID-configuratie en sending
@@ -257,7 +257,7 @@ van die subscription kan sturen.
 De live page synchroniseert de actieve browser `PushSubscription` opnieuw bij
 page-load, bij `Send Web Push test` en bij elk demo-event. Daardoor blijft
 Niveau 2 bruikbaar wanneer een Vercel serverless instance de memory fallback
-kwijt is. Met Upstash blijft dit ook persistent over cold starts heen.
+kwijt is. Met Vercel Blob blijft dit persistent over cold starts heen.
 
 Belangrijke bestanden:
 
@@ -327,19 +327,31 @@ blijft server-side en mag nooit in de repo of clientbundel komen.
 
 ### Persistente subscription store
 
-Productie gebruikt Upstash Redis REST via:
+Productie gebruikt eerst Vercel Blob via:
+
+```text
+BLOB_READ_WRITE_TOKEN=...
+PUSH_ADMIN_TOKEN=...
+```
+
+Upstash Redis REST blijft als latere technische fallback in de adapter zitten:
 
 ```text
 UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
-PUSH_ADMIN_TOKEN=...
 ```
 
 `PUSH_ADMIN_TOKEN` is alleen voor expliciete admin-maintenance, bijvoorbeeld
 een gecontroleerde broadcasttest. Normale app calls werken per install/device.
 
-Zonder Upstash-configuratie gebruikt lokale development een memory fallback.
-Die fallback is bewust alleen voor dev en niet betrouwbaar op Vercel serverless.
+De storage prioriteit is:
+
+```text
+Blob -> Upstash -> memory
+```
+
+Zonder Blob of Upstash gebruikt lokale development een memory fallback. Die
+fallback is bewust alleen voor dev en niet betrouwbaar op Vercel serverless.
 
 ### Push security
 
@@ -358,7 +370,8 @@ alleen vaste servergedefinieerde event types zoals `drink-10`, `fuel-30` en
 of `429`.
 
 `/api/push/status` geeft voor de huidige install terug of er server-side een
-subscription bekend is en welke storage mode actief is (`upstash` of `memory`).
+subscription bekend is en welke storage mode actief is (`blob`, `upstash` of
+`memory`).
 
 ### Push MVP beperkingen
 
@@ -545,9 +558,15 @@ Vercel environment variables voor Web Push:
 NEXT_PUBLIC_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY
 VAPID_SUBJECT
+BLOB_READ_WRITE_TOKEN
+PUSH_ADMIN_TOKEN
+```
+
+Optionele latere Upstash fallback:
+
+```text
 UPSTASH_REDIS_REST_URL
 UPSTASH_REDIS_REST_TOKEN
-PUSH_ADMIN_TOKEN
 ```
 
 Na een push naar de gekoppelde GitHub repo deployt Vercel automatisch.
@@ -576,8 +595,8 @@ watch-integratie test blijft behouden.
 - PWA service worker uitgebreid met app-shell precache, cache-first statische
   assets, network-first navigatie en `/offline` fallback.
 - Manifest uitgebreid naar PNG iconset met maskable icon en install helper UI.
-- Web Push storage vervangen door adapterarchitectuur met Upstash Redis REST
-  voor productie en memory fallback voor lokale dev.
+- Web Push storage vervangen door adapterarchitectuur met Vercel Blob als
+  eerste productie-optie, Upstash als latere fallback en memory voor lokale dev.
 - Pushroutes beveiligd met device-scoped ownership headers, rate limiting en
   vaste servergedefinieerde FuelPlan event-types.
 - Tests en GitHub Actions toegevoegd voor build, unit tests en Playwright E2E.
