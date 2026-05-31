@@ -44,3 +44,11 @@ Thumbs.db
 .codex/
 .sbx-denybin/
 .thumbnails/
+
+build/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+releases/
