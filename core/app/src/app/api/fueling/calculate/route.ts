@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await runFuelingCore(input.value);
+    const result = await runFuelingCore(input.value, request);
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Fueling calculation failed";

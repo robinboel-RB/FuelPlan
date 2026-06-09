@@ -10,6 +10,7 @@ import type {
 
 const PYTHON_TIMEOUT_MS = 10_000;
 const CARB_DOSE_G = 30;
+const FUELING_CORE_SERVICE_PATH = "/api/fueling_core";
 
 export function parseFuelingCoreInput(
   value: unknown
@@ -171,7 +172,15 @@ export function normalizeFuelingCoreResult(raw: unknown): FuelingCoreResult {
   };
 }
 
-export async function runFuelingCore(input: FuelingCoreInput): Promise<FuelingCoreResult> {
+export async function runFuelingCore(
+  input: FuelingCoreInput,
+  request?: Request
+): Promise<FuelingCoreResult> {
+  const serviceUrl = resolveFuelingCoreServiceUrl(request);
+  if (serviceUrl) {
+    return runFuelingCoreService(input, serviceUrl, request);
+  }
+
   const pythonBinary = resolvePythonBinary();
   const engineDir = resolveEngineDir();
   const cliPath = path.join(engineDir, "fueling_core_cli.py");
@@ -219,6 +228,87 @@ export async function runFuelingCore(input: FuelingCoreInput): Promise<FuelingCo
   });
 
   return normalizeFuelingCoreResult(JSON.parse(rawResult));
+}
+
+async function runFuelingCoreService(
+  input: FuelingCoreInput,
+  serviceUrl: string,
+  request?: Request
+): Promise<FuelingCoreResult> {
+  const response = await fetch(serviceUrl, {
+    method: "POST",
+    headers: buildServiceHeaders(request),
+    body: JSON.stringify(buildPythonPayload(input)),
+    cache: "no-store"
+  });
+  const responseText = await response.text();
+  const payload = parseServiceResponse(responseText);
+
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Fueling core service failed with ${response.status}`);
+  }
+
+  if (!payload.result) {
+    throw new Error("Fueling core service returned no result");
+  }
+
+  return normalizeFuelingCoreResult(payload.result);
+}
+
+function resolveFuelingCoreServiceUrl(request?: Request) {
+  if (process.env.FUELPLAN_FUELING_CORE_URL) {
+    return process.env.FUELPLAN_FUELING_CORE_URL;
+  }
+
+  if (!process.env.VERCEL && process.env.FUELPLAN_FORCE_PYTHON_SERVICE !== "1") {
+    return null;
+  }
+
+  const requestHost =
+    request?.headers.get("x-forwarded-host") ??
+    request?.headers.get("host");
+
+  if (requestHost) {
+    const protocol =
+      request?.headers.get("x-forwarded-proto") ??
+      (process.env.VERCEL ? "https" : "http");
+    return `${protocol}://${requestHost}${FUELING_CORE_SERVICE_PATH}`;
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}${FUELING_CORE_SERVICE_PATH}`;
+  }
+
+  return null;
+}
+
+function buildServiceHeaders(request?: Request): HeadersInit {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  const cookie = request?.headers.get("cookie");
+  const authorization = request?.headers.get("authorization");
+
+  if (cookie) {
+    headers.cookie = cookie;
+  }
+  if (authorization) {
+    headers.authorization = authorization;
+  }
+
+  return headers;
+}
+
+function parseServiceResponse(responseText: string): {
+  ok?: boolean;
+  error?: string;
+  result?: unknown;
+} {
+  try {
+    return JSON.parse(responseText);
+  } catch (error) {
+    throw new Error(`Fueling core service returned invalid JSON: ${responseText.slice(0, 200)}`);
+  }
 }
 
 function resolvePythonBinary() {

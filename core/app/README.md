@@ -19,33 +19,27 @@ npm run build
 
 ```text
 src/app       Next.js shell
-src/components watch-integratie componenten
+src/components PWA/install/push componenten
 src/ui        visuele React componenten
 src/state     React state en sessie-acties
 src/engine    pure FuelPlan berekeningen en fueling-output
-src/integrations/watch watch provider-contracten en demo/provider adapters
 src/lib/push  Web Push, device-auth, rate limiting en subscription storage
 src/utils     generieke formatting/parsing helpers
 src/services  leeg in de MVP; alleen voor echte externe integraties
+api           Vercel Python Functions
+fueling_core  Python fueling core package
 ```
 
-De centrale rekenlogica staat in `src/engine/energyEngine.ts`.
-De watch-output mapping staat in `src/engine/fuelingEngine.ts`.
+De centrale rekenlogica staat in `fueling_core/engine.py` en wordt op Vercel
+uitgevoerd via `api/fueling_core.py`. De Next API route
+`src/app/api/fueling/calculate/route.ts` valideert de browser-input en proxyt in
+productie naar die Python Function.
 React componenten mogen alleen data tonen en user input doorgeven.
 
-## Watch Integrations
+## Horloge-alerts
 
-De linkerkant van de app bevat vier opties:
-
-```text
-Demo      lokale simulatie zonder externe koppeling
-Samsung   Wear OS / Health Services route
-Garmin    Connect IQ Data Field route
-COROS     sync mode; live watch app beperkt/pending
-```
-
-De providercontracten en stappenplannen staan in `src/integrations/watch`.
-Demo blijft de standaard, zodat de MVP bruikbaar blijft zonder echte watch SDK.
+De MVP koppelt geen watch provider rechtstreeks. Horloge-alerts verlopen via
+telefoonmeldingen. Zorg dat de smartwatch telefoonmeldingen spiegelt.
 
 ## PWA Web Push
 
@@ -62,14 +56,13 @@ Niveau 1  Fueling timeline -> browser Notification API -> telefoon -> horloge
 Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
 ```
 
-De live session pagina houdt beide routes naast elkaar actief. De demo timeline
-triggert op 10s, 30s, 60s, 90s en 120s en toont per event `N1` en `N2` status.
+De live session pagina gebruikt de laatste berekende Python fueling timeline.
 Op Android gebruikt Niveau 1 `registration.showNotification()` via de service
 worker. Niveau 2 gebruikt een device-scoped PushSubscription met install-id,
-device-id en install-secret headers. Vercel stuurt alleen vaste FuelPlan
-event-types naar de subscription die bij die lokale install hoort.
+device-id en install-secret headers. Vercel stuurt alleen FuelPlan events naar
+de subscription die bij die lokale install hoort.
 De client synchroniseert de actieve browser subscription opnieuw bij page-load,
-test push en elk demo-event, zodat de memory fallback ook na een cold start
+test push en elk carb-event, zodat de memory fallback ook na een cold start
 herstelt.
 Met Vercel Blob blijft Niveau 2 persistent over Vercel cold starts heen.
 
@@ -112,9 +105,9 @@ betrouwbaar op Vercel serverless.
 De service worker precachet de app shell, gebruikt cache-first voor statische
 assets en network-first voor navigatie met `/offline` als fallback.
 
-`/api/push/send` accepteert geen vrije publieke payloads. De route accepteert
-alleen servergedefinieerde FuelPlan event-types zoals `drink-10`, `fuel-30` en
-`fuel-120`.
+`/api/push/send` accepteert geen vrije publieke payloads. Carb-alerts worden
+verstuurd als FuelPlan events uit de actieve Python timeline, met tags zoals
+`fuelplan-carb-45`.
 
 `/api/push/status` toont voor de huidige install de actieve storage mode
 (`blob`, `upstash` of `memory`) en of de server-side subscription bestaat.
