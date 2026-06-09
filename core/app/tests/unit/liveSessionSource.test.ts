@@ -14,7 +14,7 @@ describe("live session source", () => {
     expect(liveSessionSource.includes(["demo", "Timeline"].join(""))).toBe(false);
     expect(liveSessionSource.includes(["Start ", "demo", " session"].join(""))).toBe(false);
     expect(liveSessionSource).toContain("calculatedFuelingPlan.triggers");
-    expect(liveSessionSource).toContain("fuelplan-carb-");
+    expect(liveSessionSource).toContain("trigger.tag");
   });
 
   it("shows a clear state when no active session exists", () => {

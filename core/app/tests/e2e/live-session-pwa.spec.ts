@@ -8,8 +8,10 @@ test("live session renders PWA controls", async ({ page }) => {
   await expect(page.getByText("Phone", { exact: true })).toBeVisible();
   await expect(page.getByText("Niveau 2 Web Push status", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Prepare Web Push|Enable Web Push/ })).toBeVisible();
-  await expect(page.getByText("Geen actieve sessie")).toBeVisible();
-  await expect(page.getByText("Ga naar dashboard en start een sessie.")).toBeVisible();
+  await expect(page.getByText("Geen actieve sessie", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Ga naar dashboard en start een sessie.", { exact: true })
+  ).toBeVisible();
   await expect(page.getByText(["Start ", "demo", " session"].join(""))).toHaveCount(0);
 });
 

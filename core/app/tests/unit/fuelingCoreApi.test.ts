@@ -3,7 +3,7 @@ import {
   buildPythonPayload,
   normalizeFuelingCoreResult,
   parseFuelingCoreInput
-} from "@/app/api/fueling/calculate/route";
+} from "@/lib/fueling/coreApi";
 import type { FuelingCoreInput } from "@/types/fuelingCore";
 
 describe("fueling core API helpers", () => {
