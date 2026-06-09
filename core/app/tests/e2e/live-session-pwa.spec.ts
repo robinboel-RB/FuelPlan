@@ -5,7 +5,7 @@ test("live session renders PWA controls", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Live Fuel Coach" })).toBeVisible();
   await expect(page.getByText("PWA install", { exact: true })).toBeVisible();
-  await expect(page.getByText("Phone", { exact: true })).toBeVisible();
+  await expect(page.getByText("Level 1", { exact: true })).toBeVisible();
   await expect(page.getByText("Niveau 2 Web Push status", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Prepare Web Push|Enable Web Push/ })).toBeVisible();
   await expect(page.getByText("Geen actieve sessie", { exact: true })).toBeVisible();
@@ -65,8 +65,8 @@ test("dashboard stores fueling plan and opens live session with real carb trigge
 }) => {
   await page.goto("/");
 
-  await expect(page.getByText("Python core engine")).toBeVisible();
-  await expect(page.getByText("ready", { exact: true })).toBeVisible({
+  await expect(page.getByText(/Engine preview/)).toBeVisible();
+  await expect(page.getByText(/Engine preview · ready/)).toBeVisible({
     timeout: 15_000
   });
 

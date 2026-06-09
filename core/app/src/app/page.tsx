@@ -26,14 +26,6 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={session.startLiveSession}
-            disabled={session.calculationStatus !== "ready"}
-            className="w-fit rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            Start live PWA coach
-          </button>
         </header>
 
         <div className="grid gap-8 xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start">
@@ -42,7 +34,6 @@ export default function HomePage() {
               input={session.input}
               plan={session.plan}
               elapsedMinute={session.elapsedMinute}
-              watchOutput={session.watchOutput}
             />
           </section>
 

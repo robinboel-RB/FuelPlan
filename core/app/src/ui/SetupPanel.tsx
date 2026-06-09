@@ -213,26 +213,11 @@ export function SetupPanel({
         </div>
       </div>
 
-      <div className="space-y-3 rounded-[24px] border border-slate-800/80 bg-[rgba(10,18,30,0.55)] p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-              Python core engine
-            </div>
-            <div className="mt-2 text-sm leading-6 text-slate-400">
-              Excel-formules draaien via de centrale Python fueling core.
-            </div>
-          </div>
-          <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveCalculationStatusClassName(calculationStatus)}`}>
-            {calculationStatus}
-          </div>
+      {calculationError ? (
+        <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+          {calculationError}
         </div>
-        {calculationError ? (
-          <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
-            {calculationError}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
 
       <div className="flex gap-2 rounded-[18px] border border-slate-800 bg-[rgba(3,9,19,0.55)] p-1">
         <InputTab
@@ -574,9 +559,28 @@ export function SetupPanel({
         </div>
       )}
 
+      <div className="grid gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={calculationStatus !== "ready"}
+          className="rounded-[18px] bg-cyan-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Start dashboard session
+        </button>
+        <button
+          type="button"
+          onClick={onStartLive}
+          disabled={calculationStatus !== "ready"}
+          className="rounded-[18px] border border-cyan-400/40 bg-cyan-400/10 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Start live PWA coach
+        </button>
+      </div>
+
       <div className="rounded-[24px] border border-slate-800/80 bg-[rgba(10,18,30,0.72)] p-5">
         <div className="mb-4 text-[11px] uppercase tracking-[0.28em] text-slate-500">
-          Engine preview
+          Engine preview · {calculationStatus}
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -607,24 +611,6 @@ export function SetupPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={calculationStatus !== "ready"}
-          className="rounded-[18px] bg-cyan-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          Start dashboard session
-        </button>
-        <button
-          type="button"
-          onClick={onStartLive}
-          disabled={calculationStatus !== "ready"}
-          className="rounded-[18px] border border-cyan-400/40 bg-cyan-400/10 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          Start live PWA coach
-        </button>
-      </div>
     </div>
   );
 }

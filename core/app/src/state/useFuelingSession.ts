@@ -163,9 +163,17 @@ export function useFuelingSession(options: UseFuelingSessionOptions = {}) {
         calculatedFuelingPlan,
         elapsedMinute,
         isRunning,
-        firedTriggerMinutes
+        firedTriggerMinutes,
+        intakeEvents
       ),
-    [calculatedFuelingPlan, elapsedMinute, firedTriggerMinutes, input, isRunning]
+    [
+      calculatedFuelingPlan,
+      elapsedMinute,
+      firedTriggerMinutes,
+      input,
+      intakeEvents,
+      isRunning
+    ]
   );
 
   const summary = useMemo(

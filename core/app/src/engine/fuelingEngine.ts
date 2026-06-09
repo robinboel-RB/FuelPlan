@@ -240,7 +240,8 @@ export function createCoachPlanFromFuelingCore(
   corePlan: FuelingCoreResult | null,
   elapsedMinute: number,
   isRunning: boolean,
-  firedTriggerMinutes: number[] = []
+  firedTriggerMinutes: number[] = [],
+  intakeEvents: IntakeEvent[] = []
 ): CoachPlan {
   const sanitized = sanitizeCoachInput(input);
 
@@ -262,13 +263,18 @@ export function createCoachPlanFromFuelingCore(
     corePlan.timeline,
     boundedElapsedMinute
   );
+  const carbSchedule = resolveAdjustedCarbSchedule(
+    corePlan.timeForCarbs,
+    intakeEvents,
+    sessionDurationMin
+  );
   const firedSet = new Set(firedTriggerMinutes.map(Math.round));
   const dueCarbMinute =
-    corePlan.timeForCarbs.find(
+    carbSchedule.find(
       (minute) => minute <= boundedElapsedMinute && !firedSet.has(Math.round(minute))
     ) ?? null;
   const futureCarbMinute =
-    corePlan.timeForCarbs.find(
+    carbSchedule.find(
       (minute) => minute > boundedElapsedMinute && !firedSet.has(Math.round(minute))
     ) ?? null;
   const nextCarbMinute =
@@ -342,7 +348,7 @@ export function createCoachPlanFromFuelingCore(
     hydrationPerHour: 0,
     carbDoseG: CARB_DOSE_G,
     hydrationDoseMl: 0,
-    carbSchedule: corePlan.timeForCarbs,
+    carbSchedule,
     hydrationSchedule: [],
     carbPhase,
     hydrationPhase: "idle",
@@ -519,6 +525,69 @@ function findCurrentTimelinePoint(
     [...timeline].reverse().find((point) => point.minute <= targetMinute) ??
     timeline[0]
   );
+}
+
+function resolveAdjustedCarbSchedule(
+  pythonSchedule: number[],
+  intakeEvents: IntakeEvent[],
+  sessionDurationMin: number
+) {
+  const schedule = pythonSchedule
+    .map((minute) => Math.round(minute))
+    .filter((minute) => minute > 0)
+    .sort((left, right) => left - right);
+
+  if (schedule.length === 0) {
+    return [];
+  }
+
+  const defaultShiftMin = resolveScheduleShiftMinutes(schedule, sessionDurationMin);
+  const skipEvents = intakeEvents
+    .filter(
+      (event) =>
+        event.type === "skip" &&
+        (!event.targets || event.targets.length === 0 || event.targets.includes("carbs"))
+    )
+    .sort((left, right) => left.minute - right.minute);
+
+  for (const event of skipEvents) {
+    const shiftStartIndex = schedule.findIndex(
+      (minute) => minute >= Math.round(event.minute)
+    );
+
+    if (shiftStartIndex === -1) {
+      continue;
+    }
+
+    for (let index = shiftStartIndex; index < schedule.length; index += 1) {
+      schedule[index] += defaultShiftMin;
+    }
+  }
+
+  return schedule.filter((minute, index) => {
+    if (minute > sessionDurationMin) {
+      return false;
+    }
+
+    return index === 0 || minute !== schedule[index - 1];
+  });
+}
+
+function resolveScheduleShiftMinutes(
+  schedule: number[],
+  sessionDurationMin: number
+) {
+  const gaps = schedule
+    .slice(1)
+    .map((minute, index) => minute - schedule[index])
+    .filter((gap) => gap > 0);
+
+  if (gaps.length === 0) {
+    return Math.max(1, Math.min(sessionDurationMin, 20));
+  }
+
+  const sortedGaps = [...gaps].sort((left, right) => left - right);
+  return sortedGaps[Math.floor(sortedGaps.length / 2)];
 }
 
 function sumTimelineEnergy(

@@ -13,18 +13,56 @@ type BrowserNotificationStatus =
   | "permission-needed"
   | "permission-granted"
   | "permission-denied";
-
 type DeliveryStatus = "pending" | "sent" | "failed" | "skipped";
+type ServerEventStatus = "scheduled" | "sent" | "failed" | "skipped" | "cancelled";
 
 interface EventDeliveryState {
   browser: DeliveryStatus;
-  webPush: DeliveryStatus;
 }
 
-interface PushSendResponse {
+interface ServerSessionEvent {
+  eventId: string;
+  eventType: string;
+  title: string;
+  body: string;
+  tag: string;
+  triggerAt: number;
+  delaySeconds: number;
+  status: ServerEventStatus;
+  qstashMessageId?: string;
+  attempts: number;
+  lastError?: string;
+}
+
+interface ServerSessionStatusResponse {
   ok: boolean;
   error?: string;
-  successful?: number;
+  storageMode?: "blob" | "upstash" | "memory";
+  pushStorageMode?: "blob" | "upstash" | "memory";
+  readiness?: {
+    ok: boolean;
+    missing: string[];
+    hasActiveSubscription?: boolean;
+    storageMode: string;
+    pushStorageMode: string;
+  };
+  session?: {
+    sessionId: string;
+    status: "active" | "stopped" | "finished" | "expired";
+    events: ServerSessionEvent[];
+  };
+  sentCount?: number;
+  failedCount?: number;
+  nextEvent?: ServerSessionEvent | null;
+}
+
+interface ServerSessionStartResponse {
+  ok: boolean;
+  error?: string;
+  sessionId?: string;
+  storageMode?: string;
+  scheduledEventCount?: number;
+  events?: ServerSessionEvent[];
 }
 
 export function LiveSessionClient() {
@@ -37,9 +75,15 @@ export function LiveSessionClient() {
   const [eventStatuses, setEventStatuses] = useState<
     Record<string, EventDeliveryState>
   >({});
+  const [serverSessionId, setServerSessionId] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] =
+    useState<ServerSessionStatusResponse | null>(null);
+  const [serverMessage, setServerMessage] = useState("Level 2 nog niet gestart.");
+  const [isStartingServerSession, setIsStartingServerSession] = useState(false);
 
   useEffect(() => {
     updateBrowserStatusFromPermission();
+    void refreshServerStatus();
   }, []);
 
   useEffect(() => {
@@ -50,6 +94,18 @@ export function LiveSessionClient() {
 
     setEventStatuses(createInitialStatuses(session.calculatedFuelingPlan.triggers));
   }, [session.calculatedFuelingPlan]);
+
+  useEffect(() => {
+    if (!serverSessionId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshServerStatus(serverSessionId);
+    }, 4000);
+
+    return () => window.clearInterval(intervalId);
+  }, [serverSessionId]);
 
   const dueTrigger = useMemo(() => {
     if (!session.calculatedFuelingPlan || !session.isRunning) {
@@ -76,7 +132,7 @@ export function LiveSessionClient() {
     }
 
     session.markTriggerFired(dueTrigger.minute);
-    void sendFuelingTrigger(dueTrigger);
+    void sendLevel1FuelingTrigger(dueTrigger);
   }, [dueTrigger]);
 
   const nextTrigger = useMemo(() => {
@@ -96,6 +152,9 @@ export function LiveSessionClient() {
     : 0;
   const hasActiveSession =
     session.calculationStatus === "ready" && Boolean(session.calculatedFuelingPlan);
+  const readiness = serverStatus?.readiness;
+  const serverEvents = serverStatus?.session?.events ?? [];
+  const nextServerEvent = serverStatus?.nextEvent ?? null;
 
   const enableBrowserNotifications = async () => {
     if (!isNotificationSupported()) {
@@ -109,6 +168,7 @@ export function LiveSessionClient() {
     if (permission === "granted") {
       setBrowserStatus("permission-granted");
       setMessage("Browser notifications staan aan.");
+      void refreshServerStatus(serverSessionId ?? undefined);
       return true;
     }
 
@@ -157,7 +217,106 @@ export function LiveSessionClient() {
     setMessage("Live session reset.");
   };
 
-  async function sendFuelingTrigger(trigger: FuelingCoreTrigger) {
+  async function startLevel2ServerSession() {
+    if (!session.calculatedFuelingPlan) {
+      setServerMessage("Geen fueling timeline beschikbaar.");
+      return;
+    }
+
+    setIsStartingServerSession(true);
+    setServerMessage("Server session wordt gepland via QStash.");
+
+    try {
+      const response = await fetch("/api/session/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
+        body: JSON.stringify({
+          timeline: session.calculatedFuelingPlan.triggers.map((trigger) => ({
+            minute: trigger.minute,
+            eventType: "carb",
+            title: trigger.title,
+            body: trigger.body,
+            tag: trigger.tag,
+            url: "/live-session"
+          }))
+        })
+      });
+      const result = (await response.json()) as ServerSessionStartResponse;
+
+      if (!response.ok || !result.ok || !result.sessionId) {
+        throw new Error(result.error || "Level 2 server session start failed");
+      }
+
+      setServerSessionId(result.sessionId);
+      setServerMessage(
+        `Level 2 actief: ${result.scheduledEventCount ?? 0} events gepland.`
+      );
+      setServerStatus({
+        ok: true,
+        storageMode: result.storageMode as "blob" | "upstash" | "memory" | undefined,
+        session: {
+          sessionId: result.sessionId,
+          status: "active",
+          events: result.events ?? []
+        }
+      });
+      void refreshServerStatus(result.sessionId);
+    } catch (error) {
+      setServerMessage(
+        error instanceof Error ? error.message : "Level 2 server session start failed"
+      );
+      void refreshServerStatus();
+    } finally {
+      setIsStartingServerSession(false);
+    }
+  }
+
+  async function stopLevel2ServerSession() {
+    if (!serverSessionId) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/session/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
+        body: JSON.stringify({ sessionId: serverSessionId })
+      });
+      const result = (await response.json()) as { ok: boolean; error?: string };
+
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || "Stop server session failed");
+      }
+
+      setServerMessage("Level 2 server session gestopt.");
+      void refreshServerStatus(serverSessionId);
+    } catch (error) {
+      setServerMessage(error instanceof Error ? error.message : "Stop server session failed");
+    }
+  }
+
+  async function refreshServerStatus(sessionId?: string) {
+    try {
+      const url = sessionId
+        ? `/api/session/status?sessionId=${encodeURIComponent(sessionId)}`
+        : "/api/session/status";
+      const response = await fetch(url, {
+        method: "GET",
+        headers: getPushAuthHeaders()
+      });
+      const result = (await response.json()) as ServerSessionStatusResponse;
+
+      setServerStatus(result);
+
+      if (!response.ok || !result.ok) {
+        setServerMessage(result.error || "Server status kon niet worden geladen.");
+      }
+    } catch {
+      setServerMessage("Server status kon niet worden geladen.");
+    }
+  }
+
+  async function sendLevel1FuelingTrigger(trigger: FuelingCoreTrigger) {
     const browserSent = await sendBrowserNotification(
       trigger.title,
       trigger.body,
@@ -167,24 +326,14 @@ export function LiveSessionClient() {
     setEventStatuses((current) => ({
       ...current,
       [trigger.minute]: {
-        ...(current[trigger.minute] ?? { browser: "pending", webPush: "pending" }),
+        ...(current[trigger.minute] ?? { browser: "pending" }),
         browser: browserSent ? "sent" : "failed"
       }
     }));
 
-    const webPushSent = await sendWebPushNotification(trigger);
-
-    setEventStatuses((current) => ({
-      ...current,
-      [trigger.minute]: {
-        ...(current[trigger.minute] ?? { browser: "pending", webPush: "pending" }),
-        webPush: webPushSent ? "sent" : "failed"
-      }
-    }));
-
     setMessage(
-      `${trigger.title}: browser ${browserSent ? "sent" : "failed"}, Web Push ${
-        webPushSent ? "sent" : "failed"
+      `${trigger.title}: Level 1 browser notification ${
+        browserSent ? "sent" : "failed"
       }.`
     );
   }
@@ -222,9 +371,9 @@ export function LiveSessionClient() {
               Live Fuel Coach
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Deze sessie gebruikt dezelfde Python fueling timeline als het
-              dashboard. Horloge-alerts verlopen via telefoonmeldingen; zorg dat
-              je smartwatch telefoonmeldingen spiegelt.
+              Level 1 gebruikt browsermeldingen zolang deze pagina actief is.
+              Level 2 plant Web Push server-side via QStash, zodat telefoon en
+              horloge-alerts niet afhankelijk zijn van een open browser.
             </p>
           </div>
           <a
@@ -239,17 +388,17 @@ export function LiveSessionClient() {
 
         <section className="grid gap-5 xl:grid-cols-2">
           <NotificationRouteCard
-            eyebrow="Phone"
-            title="Browser notifications"
+            eyebrow="Level 1"
+            title="Browser open required"
             status={browserStatus}
             message={
               browserStatus === "permission-granted"
-                ? "Directe notifications staan aan. Pagina moet open blijven."
+                ? "Directe browser notifications staan aan. Deze route stopt als de tab of PWA niet meer actief draait."
                 : browserStatus === "permission-denied"
                   ? "Notifications zijn geblokkeerd. Pas dit aan in je browserinstellingen."
                   : browserStatus === "unsupported"
                     ? "Browser notifications worden niet ondersteund op dit toestel."
-                    : "Zet notificaties aan om live fueling alerts te ontvangen."
+                    : "Zet notificaties aan om lokale Level 1 alerts te ontvangen."
             }
           >
             <ActionButton onClick={enableBrowserNotifications}>
@@ -262,6 +411,12 @@ export function LiveSessionClient() {
 
           <PushNotificationManager />
         </section>
+
+        <ServerReadinessPanel
+          browserStatus={browserStatus}
+          readiness={readiness}
+          storageMode={serverStatus?.storageMode}
+        />
 
         {!hasActiveSession ? (
           <section className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5">
@@ -291,10 +446,6 @@ export function LiveSessionClient() {
                   <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
                     {message}
                   </p>
-                  <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
-                    Browser notifications werken zolang deze pagina actief is.
-                    Web Push gebruikt de device subscription voor achtergrondmeldingen.
-                  </p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
                   <ActionButton
@@ -308,6 +459,55 @@ export function LiveSessionClient() {
               </div>
             </section>
 
+            <section className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">
+                    Level 2 server scheduled Web Push
+                  </div>
+                  <div className="mt-2 text-lg font-semibold text-slate-100">
+                    {serverSessionId ? `Session ${serverSessionId}` : "Geen server session"}
+                  </div>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+                    {serverMessage}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Level 2 gebruikt QStash delayed events. Na start mag de telefoon
+                    locken en mag deze browser sluiten.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[380px]">
+                  <ActionButton
+                    onClick={startLevel2ServerSession}
+                    disabled={isStartingServerSession}
+                  >
+                    Start Level 2 server session
+                  </ActionButton>
+                  <ActionButton
+                    onClick={stopLevel2ServerSession}
+                    disabled={!serverSessionId}
+                  >
+                    Stop Level 2
+                  </ActionButton>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <Metric label="Storage" value={serverStatus?.storageMode ?? "unknown"} />
+                <Metric
+                  label="Scheduled"
+                  value={String(serverEvents.filter((event) => event.status === "scheduled").length)}
+                />
+                <Metric
+                  label="Next server event"
+                  value={
+                    nextServerEvent
+                      ? `${formatTimeDistance(nextServerEvent.triggerAt)} · ${nextServerEvent.tag}`
+                      : "none"
+                  }
+                />
+              </div>
+            </section>
+
             <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
@@ -317,13 +517,13 @@ export function LiveSessionClient() {
                   {formatElapsed(session.elapsedSeconds)}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">
-                  {session.isRunning ? "Session running" : "Ready"}
+                  {session.isRunning ? "Level 1 running" : "Ready"}
                 </div>
               </div>
 
               <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-                  Next action
+                  Next Level 1 action
                 </div>
                 <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
                   <div className="text-2xl font-semibold text-slate-50">
@@ -356,16 +556,14 @@ export function LiveSessionClient() {
                   <TimelineRow
                     key={trigger.tag}
                     trigger={trigger}
-                    status={
-                      eventStatuses[trigger.minute] ?? {
-                        browser: "pending",
-                        webPush: "pending"
-                      }
-                    }
+                    status={eventStatuses[trigger.minute] ?? { browser: "pending" }}
+                    serverEvent={serverEvents.find((event) => event.tag === trigger.tag)}
                   />
                 ))}
               </div>
             </section>
+
+            <WatchReadinessChecklist />
           </>
         )}
       </div>
@@ -407,6 +605,72 @@ function NotificationRouteCard({
   );
 }
 
+function ServerReadinessPanel({
+  browserStatus,
+  readiness,
+  storageMode
+}: {
+  browserStatus: BrowserNotificationStatus;
+  readiness?: ServerSessionStatusResponse["readiness"];
+  storageMode?: string;
+}) {
+  const warnings = [
+    storageMode === "memory" ? "Storage mode is memory. Level 2 production blokkeert dit." : "",
+    browserStatus === "permission-denied" ? "Notification permission is denied." : "",
+    readiness && !readiness.hasActiveSubscription ? "Geen actieve server PushSubscription." : "",
+    ...(readiness?.missing ?? []).map((item) => `Ontbreekt: ${item}`)
+  ].filter(Boolean);
+
+  if (warnings.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5">
+      <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">
+        Level 2 readiness
+      </div>
+      <div className="mt-2 text-lg font-semibold text-amber-100">
+        Controleer server push setup
+      </div>
+      <div className="mt-3 grid gap-2">
+        {warnings.map((warning) => (
+          <div key={warning} className="text-sm text-amber-100/85">
+            {warning}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function WatchReadinessChecklist() {
+  const items = [
+    "Android Chrome notifications allowed.",
+    "Site notifications visible on lock screen.",
+    "Galaxy Wearable/Wear OS notification mirroring enabled for Chrome/PWA.",
+    "Battery saver disabled.",
+    "Do Not Disturb disabled.",
+    "First test phone notification, then watch mirroring."
+  ];
+
+  return (
+    <section className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
+      <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+        Watch readiness checklist
+      </div>
+      <div className="mt-4 grid gap-2">
+        {items.map((item) => (
+          <label key={item} className="flex gap-3 text-sm text-slate-300">
+            <input type="checkbox" className="mt-1 h-4 w-4 accent-cyan-300" />
+            <span>{item}</span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ActionButton({
   children,
   disabled,
@@ -428,15 +692,30 @@ function ActionButton({
   );
 }
 
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
+        {label}
+      </div>
+      <div className="mt-1 truncate text-sm font-semibold text-slate-100">
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function TimelineRow({
-  trigger,
-  status
+  serverEvent,
+  status,
+  trigger
 }: {
   trigger: FuelingCoreTrigger;
   status: EventDeliveryState;
+  serverEvent?: ServerSessionEvent;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:grid-cols-[80px_minmax(0,1fr)_120px_120px] lg:items-center">
+    <div className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:grid-cols-[80px_minmax(0,1fr)_130px_130px] lg:items-center">
       <div className="text-sm font-semibold text-cyan-200">
         {trigger.minute} min
       </div>
@@ -446,8 +725,8 @@ function TimelineRow({
           Reservoir {Math.round(trigger.carbReservoirG)}g · {trigger.tag}
         </div>
       </div>
-      <DeliveryPill label="Browser" status={status.browser} />
-      <DeliveryPill label="Web Push" status={status.webPush} />
+      <DeliveryPill label="Level 1" status={status.browser} />
+      <ServerStatusPill status={serverEvent?.status ?? "scheduled"} />
     </div>
   );
 }
@@ -456,12 +735,20 @@ function DeliveryPill({
   label,
   status
 }: {
-  label: "Browser" | "Web Push";
+  label: "Level 1";
   status: DeliveryStatus;
 }) {
   return (
     <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveDeliveryStatusClassName(status)}`}>
       {label} {status}
+    </div>
+  );
+}
+
+function ServerStatusPill({ status }: { status: ServerEventStatus }) {
+  return (
+    <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveServerEventStatusClassName(status)}`}>
+      Level 2 {status}
     </div>
   );
 }
@@ -496,43 +783,6 @@ async function sendBrowserNotification(title: string, body: string, tag: string)
   }
 }
 
-async function sendWebPushNotification(trigger: FuelingCoreTrigger) {
-  try {
-    const subscription = await getActivePushSubscription();
-
-    if (!subscription) {
-      return false;
-    }
-
-    const response = await fetch("/api/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
-      body: JSON.stringify({
-        eventType: "carb",
-        title: trigger.title,
-        body: trigger.body,
-        tag: trigger.tag,
-        url: "/live-session",
-        subscription: subscription.toJSON()
-      })
-    });
-    const result = (await response.json()) as PushSendResponse;
-
-    return Boolean(result.ok && (result.successful ?? 0) > 0);
-  } catch {
-    return false;
-  }
-}
-
-async function getActivePushSubscription() {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    return null;
-  }
-
-  const registration = await registerServiceWorker();
-  return registration.pushManager.getSubscription();
-}
-
 async function registerServiceWorker() {
   return navigator.serviceWorker.register("/sw.js");
 }
@@ -540,8 +790,7 @@ async function registerServiceWorker() {
 function createInitialStatuses(triggers: FuelingCoreTrigger[]) {
   return triggers.reduce<Record<string, EventDeliveryState>>((result, trigger) => {
     result[trigger.minute] = {
-      browser: "pending",
-      webPush: "pending"
+      browser: "pending"
     };
     return result;
   }, {});
@@ -556,6 +805,11 @@ function formatElapsed(seconds: number) {
   const restSeconds = seconds % 60;
 
   return `${minutes}:${restSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatTimeDistance(timestamp: number) {
+  const seconds = Math.max(0, Math.round((timestamp - Date.now()) / 1000));
+  return formatElapsed(seconds);
 }
 
 function resolveBrowserStatusClassName(status: string) {
@@ -604,4 +858,20 @@ function resolveDeliveryStatusClassName(status: DeliveryStatus) {
   }
 
   return "border-slate-700 bg-slate-900 text-slate-300";
+}
+
+function resolveServerEventStatusClassName(status: ServerEventStatus) {
+  if (status === "sent") {
+    return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (status === "failed") {
+    return "border-rose-400/40 bg-rose-400/10 text-rose-200";
+  }
+
+  if (status === "cancelled" || status === "skipped") {
+    return "border-slate-700 bg-slate-900 text-slate-300";
+  }
+
+  return "border-cyan-400/40 bg-cyan-400/10 text-cyan-200";
 }

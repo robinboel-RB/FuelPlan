@@ -1,53 +1,21 @@
 "use client";
 
 import type { CoachInput, CoachPlan } from "@/engine/fuelingEngine";
-import type { FuelPlanWatchOutput } from "@/integrations/watch/types";
-import { WatchFuelPrompt } from "@/components/WatchFuelPrompt";
 
 interface WatchPanelProps {
   input: CoachInput;
   plan: CoachPlan;
   elapsedMinute: number;
-  watchOutput: FuelPlanWatchOutput;
 }
 
 export function WatchPanel({
   input,
   plan,
-  elapsedMinute,
-  watchOutput
+  elapsedMinute
 }: WatchPanelProps) {
   return (
-    <div className="space-y-5 rounded-[34px] border border-slate-800/80 bg-[rgba(4,10,21,0.84)] p-5 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
+    <div className="rounded-[34px] border border-slate-800/80 bg-[rgba(4,10,21,0.84)] p-5 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
       <WatchFace input={input} plan={plan} elapsedMinute={elapsedMinute} />
-
-      <WatchFuelPrompt output={watchOutput} />
-
-      <div className="rounded-2xl border border-slate-800/80 bg-slate-950/35 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-            Watch alerts
-          </div>
-          <div className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
-            Phone mirrored
-          </div>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-slate-400">
-          Horloge-alerts verlopen via telefoonmeldingen. Zorg dat je smartwatch
-          telefoonmeldingen spiegelt.
-        </p>
-        <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
-          <SensorMetric label="HR" value={`${input.heartRate}`} />
-          <SensorMetric
-            label="Reservoir"
-            value={`${Math.round(plan.fuelBufferG)}g`}
-          />
-          <SensorMetric
-            label="Next"
-            value={plan.nextFuelActionInMin === 0 ? "now" : `${plan.nextFuelActionInMin}m`}
-          />
-        </div>
-      </div>
     </div>
   );
 }
@@ -208,17 +176,6 @@ function MetricStack({
       >
         {value}
       </div>
-    </div>
-  );
-}
-
-function SensorMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-500">
-        {label}
-      </div>
-      <div className="mt-1 font-semibold text-slate-100">{value}</div>
     </div>
   );
 }
