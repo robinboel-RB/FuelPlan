@@ -1,12 +1,12 @@
 "use client";
 
-import { useCoachSession } from "@/state/useCoachSession";
+import { useFuelingSession } from "@/state/useFuelingSession";
 import { WatchPanel } from "@/components/WatchPanel";
 import { GuidancePanel } from "@/ui/GuidancePanel";
 import { SetupPanel } from "@/ui/SetupPanel";
 
 export default function HomePage() {
-  const session = useCoachSession();
+  const session = useFuelingSession({ mode: "dashboard" });
 
   return (
     <main className="min-h-screen px-4 py-6 md:px-6 md:py-8">
@@ -26,12 +26,14 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-          <a
-            href="/live-session"
-            className="w-fit rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100"
+          <button
+            type="button"
+            onClick={session.startLiveSession}
+            disabled={session.calculationStatus !== "ready"}
+            className="w-fit rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Live PWA coach
-          </a>
+            Start live PWA coach
+          </button>
         </header>
 
         <div className="grid gap-8 xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start">
@@ -40,12 +42,7 @@ export default function HomePage() {
               input={session.input}
               plan={session.plan}
               elapsedMinute={session.elapsedMinute}
-              selectedProviderId={session.selectedWatchProviderId}
-              provider={session.selectedWatchProvider}
-              connectionStatus={session.watchConnectionStatus}
-              sensorSample={session.watchSensorSample}
               watchOutput={session.watchOutput}
-              onSelectProvider={session.selectWatchProvider}
             />
           </section>
 
@@ -54,8 +51,11 @@ export default function HomePage() {
               <SetupPanel
                 value={session.input}
                 plan={session.plan}
+                calculationStatus={session.calculationStatus}
+                calculationError={session.calculationError}
                 onChange={session.setInput}
                 onStart={session.startSession}
+                onStartLive={session.startLiveSession}
               />
             ) : (
               <GuidancePanel
@@ -69,7 +69,6 @@ export default function HomePage() {
                 onResume={session.resumeSession}
                 onBackToSetup={session.backToSetup}
                 onTakeCarbs={session.takeCarbs}
-                onTakeDrink={session.takeDrink}
                 onSkip={session.skipReminder}
               />
             )}

@@ -278,7 +278,7 @@ export function PushNotificationManager() {
           ) : null}
           {serverStorageMode === "memory" ? (
             <p className="mt-2 max-w-xl text-xs leading-5 text-amber-200">
-              Memory fallback is bruikbaar voor demo's. Voeg Vercel Blob toe
+              Memory fallback is bruikbaar voor lokale tests. Voeg Vercel Blob toe
               voor persistente delivery.
             </p>
           ) : null}

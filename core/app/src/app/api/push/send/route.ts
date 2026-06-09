@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAdminRequest, readPushRequestAuth } from "@/lib/push/auth";
 import { sendPushRecordsWithStore } from "@/lib/push/delivery";
-import { resolvePushEventPayload } from "@/lib/push/events";
+import { resolvePushEventPayloadFromBody } from "@/lib/push/events";
 import { checkPushRateLimit } from "@/lib/push/rateLimit";
 import { resolveTargetSubscriptions } from "@/lib/push/routeHelpers";
 import { getPushSubscriptionStore } from "@/lib/push/subscriptions";
@@ -17,11 +17,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const event = resolvePushEventPayload(
-    body && typeof body === "object" && "eventType" in body
-      ? (body as { eventType?: unknown }).eventType
-      : null
-  );
+  const event = resolvePushEventPayloadFromBody(body);
 
   if (!event) {
     return NextResponse.json(

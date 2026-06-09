@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolvePushEventPayload } from "@/lib/push/events";
+import {
+  resolvePushEventPayload,
+  resolvePushEventPayloadFromBody
+} from "@/lib/push/events";
 import { resolveTargetSubscriptions } from "@/lib/push/routeHelpers";
 import {
   parsePushSubscription,
@@ -9,10 +12,27 @@ import {
 } from "@/lib/push/subscriptions";
 
 describe("push event payloads", () => {
-  it("accepts only server-defined FuelPlan push events", () => {
-    expect(resolvePushEventPayload("drink-10")?.payload.title).toBe("Drink now");
-    expect(resolvePushEventPayload("fuel-120")?.payload.body).toContain("25g carbs");
+  it("accepts server-defined test events and dynamic carb events", () => {
+    expect(resolvePushEventPayload("fuelplan-test")?.payload.title).toBe("FuelPlan test");
+    expect(
+      resolvePushEventPayloadFromBody({
+        eventType: "carb",
+        title: "Fuel now",
+        body: "Neem 30g carbs",
+        tag: "fuelplan-carb-45",
+        url: "/live-session"
+      })?.payload.body
+    ).toBe("Neem 30g carbs");
     expect(resolvePushEventPayload("custom-public-payload")).toBeNull();
+    expect(
+      resolvePushEventPayloadFromBody({
+        eventType: "carb",
+        title: "Fuel now",
+        body: "Neem 30g carbs",
+        tag: "unsafe-tag",
+        url: "/live-session"
+      })
+    ).toBeNull();
   });
 
   it("validates Web Push subscription shape", () => {

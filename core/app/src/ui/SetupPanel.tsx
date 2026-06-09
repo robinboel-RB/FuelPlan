@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   CoachInput,
   CoachPlan,
-  EquationOutputMode,
   Gender
 } from "@/engine/fuelingEngine";
 import {
@@ -22,6 +21,7 @@ type NumericInputKey =
   | "heightM"
   | "restingHrBpm"
   | "maxHrBpm"
+  | "runningLevel"
   | "slopeDecimal"
   | "cumulativeAscentM"
   | "cumulativeDescentM"
@@ -35,15 +35,21 @@ type InputDraft = ReturnType<typeof createDraftFromInput>;
 interface SetupPanelProps {
   value: CoachInput;
   plan: CoachPlan;
+  calculationStatus: "idle" | "calculating" | "ready" | "error";
+  calculationError: string | null;
   onChange: (value: CoachInput) => void;
   onStart: () => void;
+  onStartLive: () => void;
 }
 
 export function SetupPanel({
   value,
   plan,
+  calculationStatus,
+  calculationError,
   onChange,
-  onStart
+  onStart,
+  onStartLive
 }: SetupPanelProps) {
   const [inputPage, setInputPage] = useState<InputPage>("profile");
   const [draft, setDraft] = useState<InputDraft>(() => createDraftFromInput(value));
@@ -107,13 +113,6 @@ export function SetupPanel({
     onChange({
       ...value,
       gender
-    });
-  };
-
-  const updateOutputMode = (outputMode: EquationOutputMode) => {
-    onChange({
-      ...value,
-      outputMode
     });
   };
 
@@ -214,24 +213,25 @@ export function SetupPanel({
         </div>
       </div>
 
-      <div className="space-y-4 rounded-[24px] border border-slate-800/80 bg-[rgba(10,18,30,0.55)] p-4">
-        <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
-          Output equation
+      <div className="space-y-3 rounded-[24px] border border-slate-800/80 bg-[rgba(10,18,30,0.55)] p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">
+              Python core engine
+            </div>
+            <div className="mt-2 text-sm leading-6 text-slate-400">
+              Excel-formules draaien via de centrale Python fueling core.
+            </div>
+          </div>
+          <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveCalculationStatusClassName(calculationStatus)}`}>
+            {calculationStatus}
+          </div>
         </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <EquationButton
-            active={value.outputMode === "keytel"}
-            title="Keytel Equation"
-            body="Energy used from HR"
-            onClick={() => updateOutputMode("keytel")}
-          />
-          <EquationButton
-            active={value.outputMode === "minetti"}
-            title="Minetti Equation"
-            body="Trail cost for ideal movement"
-            onClick={() => updateOutputMode("minetti")}
-          />
-        </div>
+        {calculationError ? (
+          <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+            {calculationError}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex gap-2 rounded-[18px] border border-slate-800 bg-[rgba(3,9,19,0.55)] p-1">
@@ -392,6 +392,22 @@ export function SetupPanel({
                 )
               }
               placeholder="Auto target"
+            />
+          </Field>
+
+          <Field label="Running level (1-4)">
+            <input
+              className={inputClassName}
+              type="number"
+              min={1}
+              max={4}
+              step={1}
+              value={draft.runningLevel}
+              placeholder="1"
+              onChange={(event) => updateNumber("runningLevel", event.target.value)}
+              onBlur={() =>
+                restoreNumberDraft("runningLevel", value.runningLevel.toString())
+              }
             />
           </Field>
         </div>
@@ -565,19 +581,18 @@ export function SetupPanel({
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <PreviewMetric label="Total kcal" value={`${Math.round(plan.totalKcal)}`} />
-          <PreviewMetric label="Output" value={plan.selectedEngine} />
-          <PreviewMetric label="Fuel buffer" value={formatSigned(plan.fuelBufferG, "g")} />
+          <PreviewMetric
+            label="Carbs burned"
+            value={`${Math.round(plan.carbPerHour * plan.sessionDurationMin / 60)} g`}
+          />
+          <PreviewMetric
+            label="Next carbs"
+            value={plan.carbSchedule.length ? `${plan.nextCarbMinute} min` : "none"}
+          />
+          <PreviewMetric label="Carb reservoir" value={formatSigned(plan.fuelBufferG, "g")} />
           <PreviewMetric label="Fuel deficit" value={`${Math.round(plan.fuelDeficitG)} g`} />
           <PreviewMetric label="Carbs / hour" value={`${Math.round(plan.carbPerHour)} g`} />
-          <PreviewMetric
-            label="Hydration / hour"
-            value={`${plan.hydrationPerHour} ml`}
-          />
           <PreviewMetric label="Dose carbs" value={`${plan.carbDoseG} g`} />
-          <PreviewMetric
-            label="Dose drink"
-            value={`${plan.hydrationDoseMl} ml`}
-          />
           <PreviewMetric label="RER" value={plan.averageRer.toFixed(2)} />
         </div>
 
@@ -592,41 +607,25 @@ export function SetupPanel({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onStart}
-        className="w-full rounded-[18px] bg-cyan-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-slate-950 transition hover:bg-cyan-300"
-      >
-        Start session
-      </button>
+      <div className="grid gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={calculationStatus !== "ready"}
+          className="rounded-[18px] bg-cyan-400 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Start dashboard session
+        </button>
+        <button
+          type="button"
+          onClick={onStartLive}
+          disabled={calculationStatus !== "ready"}
+          className="rounded-[18px] border border-cyan-400/40 bg-cyan-400/10 px-6 py-5 text-base font-semibold uppercase tracking-[0.1em] text-cyan-100 transition hover:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Start live PWA coach
+        </button>
+      </div>
     </div>
-  );
-}
-
-function EquationButton({
-  active,
-  title,
-  body,
-  onClick
-}: {
-  active: boolean;
-  title: string;
-  body: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-2xl border px-4 py-4 text-left transition ${
-        active
-          ? "border-cyan-400/70 bg-cyan-400/10 text-cyan-100"
-          : "border-slate-800 bg-[rgba(3,9,19,0.45)] text-slate-300 hover:border-slate-600"
-      }`}
-    >
-      <div className="text-base font-semibold">{title}</div>
-      <div className="mt-1 text-sm text-slate-500">{body}</div>
-    </button>
   );
 }
 
@@ -705,6 +704,7 @@ function createDraftFromInput(value: CoachInput) {
     restingHrBpm: value.restingHrBpm.toString(),
     maxHrBpm: value.maxHrBpm.toString(),
     vo2MaxMlKgMin: value.vo2MaxMlKgMin?.toString() ?? "",
+    runningLevel: value.runningLevel.toString(),
     plannedCarbsPerHour: value.plannedCarbsPerHour?.toString() ?? "",
     segmentPace: formatPaceInput(value.speedMPerMin),
     segmentTime: formatDurationInput(value.segmentDurationMin),
@@ -726,4 +726,18 @@ function parseNumberInput(value: string): number | null {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveCalculationStatusClassName(
+  status: "idle" | "calculating" | "ready" | "error"
+) {
+  if (status === "ready") {
+    return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
+  }
+
+  if (status === "calculating" || status === "idle") {
+    return "border-amber-400/40 bg-amber-400/10 text-amber-200";
+  }
+
+  return "border-rose-400/40 bg-rose-400/10 text-rose-200";
 }

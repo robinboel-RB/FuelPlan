@@ -2,72 +2,49 @@
 
 import type { CoachInput, CoachPlan } from "@/engine/fuelingEngine";
 import type { FuelPlanWatchOutput } from "@/integrations/watch/types";
-import type {
-  WatchConnectionStatus as WatchConnectionStatusValue,
-  WatchProvider,
-  WatchProviderId,
-  WatchSensorSample
-} from "@/integrations/watch/types";
-import { WatchConnectionStatus } from "@/components/WatchConnectionStatus";
 import { WatchFuelPrompt } from "@/components/WatchFuelPrompt";
-import { WatchProviderSelector } from "@/components/WatchProviderSelector";
 
 interface WatchPanelProps {
   input: CoachInput;
   plan: CoachPlan;
   elapsedMinute: number;
-  selectedProviderId: WatchProviderId;
-  provider: WatchProvider;
-  connectionStatus: WatchConnectionStatusValue;
-  sensorSample: WatchSensorSample;
   watchOutput: FuelPlanWatchOutput;
-  onSelectProvider: (providerId: WatchProviderId) => void;
 }
 
 export function WatchPanel({
   input,
   plan,
   elapsedMinute,
-  selectedProviderId,
-  provider,
-  connectionStatus,
-  sensorSample,
-  watchOutput,
-  onSelectProvider
+  watchOutput
 }: WatchPanelProps) {
   return (
     <div className="space-y-5 rounded-[34px] border border-slate-800/80 bg-[rgba(4,10,21,0.84)] p-5 shadow-[0_30px_80px_rgba(2,6,23,0.45)]">
-      <WatchProviderSelector
-        selectedProviderId={selectedProviderId}
-        onSelectProvider={onSelectProvider}
-      />
-
       <WatchFace input={input} plan={plan} elapsedMinute={elapsedMinute} />
 
-      <WatchConnectionStatus provider={provider} status={connectionStatus} />
       <WatchFuelPrompt output={watchOutput} />
 
       <div className="rounded-2xl border border-slate-800/80 bg-slate-950/35 p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-            Demo sensor sample
+            Watch alerts
           </div>
           <div className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
-            Demo connected
+            Phone mirrored
           </div>
         </div>
+        <p className="mt-3 text-sm leading-6 text-slate-400">
+          Horloge-alerts verlopen via telefoonmeldingen. Zorg dat je smartwatch
+          telefoonmeldingen spiegelt.
+        </p>
         <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+          <SensorMetric label="HR" value={`${input.heartRate}`} />
           <SensorMetric
-            label="HR"
-            value={`${sensorSample.heartRateBpm ?? input.heartRate}`}
+            label="Reservoir"
+            value={`${Math.round(plan.fuelBufferG)}g`}
           />
           <SensorMetric
-            label="Dist"
-            value={`${Math.round(sensorSample.distanceMeters ?? 0)}m`}
-          />
-          <SensorMetric
-            label="Pace"
-            value={formatPace(sensorSample.paceSecPerKm)}
+            label="Next"
+            value={plan.nextFuelActionInMin === 0 ? "now" : `${plan.nextFuelActionInMin}m`}
           />
         </div>
       </div>
@@ -260,14 +237,3 @@ function resolveMessageClassName(message: string) {
   return "text-[2.9rem] sm:text-[3.5rem]";
 }
 
-function formatPace(paceSecPerKm?: number) {
-  if (!paceSecPerKm || !Number.isFinite(paceSecPerKm)) {
-    return "--";
-  }
-
-  const totalSeconds = Math.round(paceSecPerKm);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${minutes}:${seconds.toString().padStart(2, "0")}/km`;
-}

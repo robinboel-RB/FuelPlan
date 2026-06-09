@@ -18,7 +18,6 @@ interface GuidancePanelProps {
   onResume: () => void;
   onBackToSetup: () => void;
   onTakeCarbs: () => void;
-  onTakeDrink: () => void;
   onSkip: () => void;
 }
 
@@ -33,7 +32,6 @@ export function GuidancePanel({
   onResume,
   onBackToSetup,
   onTakeCarbs,
-  onTakeDrink,
   onSkip
 }: GuidancePanelProps) {
   const actualEvents = intakeEvents.filter((event) => event.type !== "skip");
@@ -107,7 +105,7 @@ export function GuidancePanel({
                   : `${plan.nextFuelActionInMin} min`
             }
           />
-          <Metric label="Fuel buffer" value={formatSigned(plan.fuelBufferG, "g")} />
+          <Metric label="Carb reservoir" value={formatSigned(plan.fuelBufferG, "g")} />
           <Metric label="Fuel deficit" value={`${Math.round(plan.fuelDeficitG)} g`} />
           <Metric label="RER" value={plan.averageRer.toFixed(2)} />
         </div>
@@ -129,10 +127,9 @@ export function GuidancePanel({
           <span className="text-right text-lg font-semibold text-cyan-200 md:text-left">
             {isCompleted ? "Session complete" : plan.nextActionLabel}
           </span>
-          <span className="text-slate-400">Fuel balance</span>
+          <span className="text-slate-400">Carb reservoir</span>
           <span className="text-right font-semibold text-amber-300 md:text-left">
-            {formatSigned(summary.carbBalance, "g")} · {" "}
-            {formatSigned(summary.hydrationBalance, "ml")}
+            {formatSigned(plan.fuelBufferG, "g")} versus start
           </span>
         </div>
       </section>
@@ -157,29 +154,17 @@ export function GuidancePanel({
           }))}
         />
         <TimelineRow
-          label="Hydration plan"
-          totalMinute={plan.sessionDurationMin}
-          currentMinute={elapsedMinute}
-          markers={plan.hydrationSchedule.map((minute) => ({
-            minute,
-            variant: "planned-hydration" as const
-          }))}
-        />
-        <TimelineRow
           label="Actual"
           totalMinute={plan.sessionDurationMin}
           currentMinute={elapsedMinute}
           markers={actualEvents.map((event) => ({
             minute: event.minute,
-            variant:
-              event.type === "carbs"
-                ? ("actual-carb" as const)
-                : ("actual-hydration" as const)
+            variant: "actual-carb" as const
           }))}
         />
 
         <div className="text-xs text-slate-500">
-          Planned: hollow dots · Taken: filled dots
+          Planned carb triggers come from Python time_for_carbs. Taken carbs are filled dots.
         </div>
       </section>
 
@@ -194,10 +179,10 @@ export function GuidancePanel({
         ) : (
           <>
             <div className="text-base text-slate-300">
-              Pending: carbs {summary.pendingCarbCount} · hydration {summary.pendingHydrationCount}
+              Pending carb trigger: {summary.pendingCarbCount}
             </div>
             <div className="text-sm text-slate-500">
-              Suggested now: {plan.carbDoseG}g carbs · {plan.hydrationDoseMl}ml drink
+              Suggested now: {plan.carbDoseG}g carbs
               <span className="block pt-1 text-slate-600">{plan.fuelMessage}</span>
             </div>
 
@@ -206,11 +191,6 @@ export function GuidancePanel({
                 tone="carb"
                 label={`Carbs taken (${plan.carbDoseG}g)`}
                 onClick={onTakeCarbs}
-              />
-              <ActionButton
-                tone="hydration"
-                label={`Drink taken (${plan.hydrationDoseMl}ml)`}
-                onClick={onTakeDrink}
               />
               <ActionButton tone="skip" label="Skip" onClick={onSkip} />
             </div>
@@ -373,9 +353,7 @@ function TimelineRow({
     minute: number;
     variant:
       | "planned-carb"
-      | "planned-hydration"
-      | "actual-carb"
-      | "actual-hydration";
+      | "actual-carb";
   }>;
 }) {
   return (
@@ -414,14 +392,12 @@ function ActionButton({
 }: {
   label: string;
   onClick: () => void;
-  tone: "carb" | "hydration" | "skip";
+  tone: "carb" | "skip";
 }) {
   const className =
     tone === "carb"
       ? "bg-emerald-400 text-slate-950 hover:bg-emerald-300"
-      : tone === "hydration"
-        ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-        : "bg-slate-600 text-slate-100 hover:bg-slate-500";
+      : "bg-slate-600 text-slate-100 hover:bg-slate-500";
 
   return (
     <button
@@ -437,19 +413,13 @@ function ActionButton({
 function resolveMarkerClassName(
   variant:
     | "planned-carb"
-    | "planned-hydration"
     | "actual-carb"
-    | "actual-hydration"
 ) {
   switch (variant) {
     case "planned-carb":
       return "border border-cyan-300 bg-transparent";
-    case "planned-hydration":
-      return "border border-slate-400 bg-transparent";
     case "actual-carb":
       return "bg-amber-300";
-    case "actual-hydration":
-      return "bg-cyan-300";
   }
 }
 
@@ -462,7 +432,7 @@ function describeEvent(event: IntakeEvent) {
     return `${event.targets.join(" + ")} skipped`;
   }
 
-  return `${event.type === "carbs" ? "carbs" : "drink"} ${event.amount}${event.unit}`;
+  return `carbs ${event.amount}${event.unit}`;
 }
 
 function resolveMarkerOffset(minute: number, totalMinute: number) {

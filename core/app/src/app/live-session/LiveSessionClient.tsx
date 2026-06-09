@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import { PushNotificationManager } from "@/components/PushNotificationManager";
 import { getPushAuthHeaders } from "@/lib/push/clientIdentity";
+import { useFuelingSession } from "@/state/useFuelingSession";
+import type { FuelingCoreTrigger } from "@/types/fuelingCore";
 
 type BrowserNotificationStatus =
   | "unsupported"
@@ -12,17 +14,7 @@ type BrowserNotificationStatus =
   | "permission-granted"
   | "permission-denied";
 
-type SessionStatus = "idle" | "session-running" | "session-finished";
-type DeliveryStatus = "pending" | "sent" | "failed";
-
-interface DemoTimelineEvent {
-  id: string;
-  triggerAtSec: number;
-  type: string;
-  title: string;
-  body: string;
-  tag: string;
-}
+type DeliveryStatus = "pending" | "sent" | "failed" | "skipped";
 
 interface EventDeliveryState {
   browser: DeliveryStatus;
@@ -35,85 +27,75 @@ interface PushSendResponse {
   successful?: number;
 }
 
-const demoTimeline: DemoTimelineEvent[] = [
-  {
-    id: "drink-10",
-    triggerAtSec: 10,
-    type: "Drink",
-    title: "Drink now",
-    body: "Drink 150-200ml water.",
-    tag: "fuelplan-drink-10"
-  },
-  {
-    id: "fuel-30",
-    triggerAtSec: 30,
-    type: "Fuel",
-    title: "Fuel now",
-    body: "Neem 25g carbs.",
-    tag: "fuelplan-fuel-30"
-  },
-  {
-    id: "drink-60",
-    triggerAtSec: 60,
-    type: "Drink",
-    title: "Drink now",
-    body: "Drink opnieuw enkele slokken.",
-    tag: "fuelplan-drink-60"
-  },
-  {
-    id: "energy-90",
-    triggerAtSec: 90,
-    type: "Check",
-    title: "Energy check",
-    body: "Voel je een dip? Neem extra carbs.",
-    tag: "fuelplan-energy-90"
-  },
-  {
-    id: "fuel-120",
-    triggerAtSec: 120,
-    type: "Fuel",
-    title: "Fuel now",
-    body: "Neem 25g carbs indien intensiteit hoog blijft.",
-    tag: "fuelplan-fuel-120"
-  }
-];
-
-const finalTriggerAtSec = demoTimeline[demoTimeline.length - 1].triggerAtSec;
-
 export function LiveSessionClient() {
+  const session = useFuelingSession({ mode: "live" });
   const [browserStatus, setBrowserStatus] =
     useState<BrowserNotificationStatus>("permission-needed");
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>("idle");
   const [message, setMessage] = useState(
-    "Open deze pagina op je telefoon en zet minstens een van beide notification routes aan."
+    "Laad een actieve sessie vanaf het dashboard en zet notifications aan."
   );
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [eventStatuses, setEventStatuses] = useState<
     Record<string, EventDeliveryState>
-  >(() => createInitialStatuses());
-
-  const timeoutIdsRef = useRef<number[]>([]);
-  const intervalIdRef = useRef<number | null>(null);
-  const startedAtMsRef = useRef<number | null>(null);
+  >({});
 
   useEffect(() => {
     updateBrowserStatusFromPermission();
-    return () => clearSessionTimers({ skipState: true });
   }, []);
 
-  const nextEvent = useMemo(() => {
-    return (
-      demoTimeline.find((event) => {
-        const state = eventStatuses[event.id];
-        const stillPending = state.browser === "pending" || state.webPush === "pending";
-        return stillPending && (!isSessionRunning(sessionStatus) || event.triggerAtSec > elapsedSeconds);
-      }) || null
-    );
-  }, [elapsedSeconds, eventStatuses, sessionStatus]);
+  useEffect(() => {
+    if (!session.calculatedFuelingPlan) {
+      setEventStatuses({});
+      return;
+    }
 
-  const secondsToNextAction = nextEvent
-    ? Math.max(0, nextEvent.triggerAtSec - elapsedSeconds)
+    setEventStatuses(createInitialStatuses(session.calculatedFuelingPlan.triggers));
+  }, [session.calculatedFuelingPlan]);
+
+  const dueTrigger = useMemo(() => {
+    if (!session.calculatedFuelingPlan || !session.isRunning) {
+      return null;
+    }
+
+    return (
+      session.calculatedFuelingPlan.triggers.find(
+        (trigger) =>
+          trigger.minute <= session.elapsedMinute &&
+          !session.firedTriggerMinutes.includes(trigger.minute)
+      ) ?? null
+    );
+  }, [
+    session.calculatedFuelingPlan,
+    session.elapsedMinute,
+    session.firedTriggerMinutes,
+    session.isRunning
+  ]);
+
+  useEffect(() => {
+    if (!dueTrigger) {
+      return;
+    }
+
+    session.markTriggerFired(dueTrigger.minute);
+    void sendFuelingTrigger(dueTrigger);
+  }, [dueTrigger]);
+
+  const nextTrigger = useMemo(() => {
+    if (!session.calculatedFuelingPlan) {
+      return null;
+    }
+
+    return (
+      session.calculatedFuelingPlan.triggers.find(
+        (trigger) => !session.firedTriggerMinutes.includes(trigger.minute)
+      ) ?? null
+    );
+  }, [session.calculatedFuelingPlan, session.firedTriggerMinutes]);
+
+  const secondsToNextAction = nextTrigger
+    ? Math.max(0, nextTrigger.minute * 60 - session.elapsedSeconds)
     : 0;
+  const hasActiveSession =
+    session.calculationStatus === "ready" && Boolean(session.calculatedFuelingPlan);
 
   const enableBrowserNotifications = async () => {
     if (!isNotificationSupported()) {
@@ -126,7 +108,7 @@ export function LiveSessionClient() {
 
     if (permission === "granted") {
       setBrowserStatus("permission-granted");
-      setMessage("Niveau 1 staat aan. Test nu telefoon en horloge.");
+      setMessage("Browser notifications staan aan.");
       return true;
     }
 
@@ -137,7 +119,7 @@ export function LiveSessionClient() {
     }
 
     setBrowserStatus("permission-needed");
-    setMessage("Zet notificaties aan om live fueling alerts te testen.");
+    setMessage("Zet notificaties aan om live fueling alerts te ontvangen.");
     return false;
   };
 
@@ -158,94 +140,54 @@ export function LiveSessionClient() {
 
     const wasSent = await sendBrowserNotification(
       "FuelPlan test",
-      "Als je dit op je horloge ziet, werkt de MVP-route.",
+      "Als je dit op je horloge ziet, werkt de telefoonmelding-route.",
       "fuelplan-browser-test"
     );
 
-    if (wasSent) {
-      setMessage("Niveau 1 testnotification verzonden.");
-      setBrowserStatus("permission-granted");
-      return;
-    }
-
+    setMessage(
+      wasSent
+        ? "Testnotification verzonden."
+        : "Zet notifications aan voor de browser test."
+    );
     updateBrowserStatusFromPermission();
-    setMessage("Zet notifications aan voor de browser test.");
-  };
-
-  const startDemoSession = () => {
-    clearSessionTimers();
-    setElapsedSeconds(0);
-    setSessionStatus("session-running");
-    setEventStatuses(createInitialStatuses());
-    setMessage("Demo session loopt. Niveau 1 en Niveau 2 proberen elke trigger te verzenden.");
-    startedAtMsRef.current = Date.now();
-
-    intervalIdRef.current = window.setInterval(() => {
-      if (!startedAtMsRef.current) {
-        return;
-      }
-
-      const nextElapsedSeconds = Math.floor(
-        (Date.now() - startedAtMsRef.current) / 1000
-      );
-      setElapsedSeconds(nextElapsedSeconds);
-
-      if (nextElapsedSeconds >= finalTriggerAtSec + 2) {
-        setSessionStatus("session-finished");
-        setMessage("Demo session finished. Check telefoon en horloge.");
-        clearSessionTimers({ keepRunningState: true });
-      }
-    }, 1000);
-
-    demoTimeline.forEach((event) => {
-      const timeoutId = window.setTimeout(() => {
-        void sendTimelineEvent(event);
-      }, event.triggerAtSec * 1000);
-
-      timeoutIdsRef.current.push(timeoutId);
-    });
   };
 
   const resetSession = () => {
-    clearSessionTimers();
-    setElapsedSeconds(0);
-    setSessionStatus("idle");
-    setEventStatuses(createInitialStatuses());
-    updateBrowserStatusFromPermission();
-    setMessage("Session reset. Start opnieuw wanneer je telefoon en horloge klaar zijn.");
+    session.resetSession();
+    setMessage("Live session reset.");
   };
 
-  const sendTimelineEvent = async (event: DemoTimelineEvent) => {
+  async function sendFuelingTrigger(trigger: FuelingCoreTrigger) {
     const browserSent = await sendBrowserNotification(
-      event.title,
-      event.body,
-      event.tag
+      trigger.title,
+      trigger.body,
+      trigger.tag
     );
 
     setEventStatuses((current) => ({
       ...current,
-      [event.id]: {
-        ...current[event.id],
+      [trigger.minute]: {
+        ...(current[trigger.minute] ?? { browser: "pending", webPush: "pending" }),
         browser: browserSent ? "sent" : "failed"
       }
     }));
 
-    const webPushSent = await sendWebPushNotification(event);
+    const webPushSent = await sendWebPushNotification(trigger);
 
     setEventStatuses((current) => ({
       ...current,
-      [event.id]: {
-        ...current[event.id],
+      [trigger.minute]: {
+        ...(current[trigger.minute] ?? { browser: "pending", webPush: "pending" }),
         webPush: webPushSent ? "sent" : "failed"
       }
     }));
 
     setMessage(
-      `${event.title}: Niveau 1 ${browserSent ? "sent" : "failed"}, Niveau 2 ${
+      `${trigger.title}: browser ${browserSent ? "sent" : "failed"}, Web Push ${
         webPushSent ? "sent" : "failed"
       }.`
     );
-  };
+  }
 
   function updateBrowserStatusFromPermission() {
     if (!isNotificationSupported()) {
@@ -268,41 +210,21 @@ export function LiveSessionClient() {
     setBrowserStatus("permission-needed");
   }
 
-  function clearSessionTimers(
-    options: { keepRunningState?: boolean; skipState?: boolean } = {}
-  ) {
-    timeoutIdsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
-    timeoutIdsRef.current = [];
-
-    if (intervalIdRef.current !== null) {
-      window.clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
-    }
-
-    startedAtMsRef.current = null;
-
-    if (!options.keepRunningState && !options.skipState) {
-      setSessionStatus("idle");
-    }
-  }
-
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-6xl space-y-5">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-300">
-              Notification MVP
+              Live PWA coach
             </div>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-50">
               Live Fuel Coach
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              Open deze pagina in Chrome op Android. Niveau 1 gebruikt Android-
-              compatibele service-worker notifications zolang de pagina actief
-              is. Niveau 2 gebruikt Web Push via Vercel met een device-scoped
-              subscription. Als je horloge telefoonmeldingen spiegelt, verschijnen
-              de alerts ook op je horloge.
+              Deze sessie gebruikt dezelfde Python fueling timeline als het
+              dashboard. Horloge-alerts verlopen via telefoonmeldingen; zorg dat
+              je smartwatch telefoonmeldingen spiegelt.
             </p>
           </div>
           <a
@@ -317,7 +239,7 @@ export function LiveSessionClient() {
 
         <section className="grid gap-5 xl:grid-cols-2">
           <NotificationRouteCard
-            eyebrow="Niveau 1"
+            eyebrow="Phone"
             title="Browser notifications"
             status={browserStatus}
             message={
@@ -327,7 +249,7 @@ export function LiveSessionClient() {
                   ? "Notifications zijn geblokkeerd. Pas dit aan in je browserinstellingen."
                   : browserStatus === "unsupported"
                     ? "Browser notifications worden niet ondersteund op dit toestel."
-                    : "Zet notificaties aan om live fueling alerts te testen."
+                    : "Zet notificaties aan om live fueling alerts te ontvangen."
             }
           >
             <ActionButton onClick={enableBrowserNotifications}>
@@ -338,95 +260,114 @@ export function LiveSessionClient() {
             </ActionButton>
           </NotificationRouteCard>
 
-          <div>
-            <PushNotificationManager />
-          </div>
+          <PushNotificationManager />
         </section>
 
-        <section className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
+        {!hasActiveSession ? (
+          <section className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5">
+            <div className="text-lg font-semibold text-amber-100">
+              Geen actieve sessie
+            </div>
+            <p className="mt-2 text-sm leading-6 text-amber-100/80">
+              Ga naar dashboard en start een sessie.
+            </p>
+            {session.calculationError ? (
+              <p className="mt-2 text-sm text-amber-100/70">
+                {session.calculationError}
+              </p>
+            ) : null}
+          </section>
+        ) : (
+          <>
+            <section className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+                    Active session
+                  </div>
+                  <div className={`mt-2 w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveSessionStatusClassName(session.liveSessionStatus)}`}>
+                    {session.liveSessionStatus}
+                  </div>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
+                    {message}
+                  </p>
+                  <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
+                    Browser notifications werken zolang deze pagina actief is.
+                    Web Push gebruikt de device subscription voor achtergrondmeldingen.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
+                  <ActionButton
+                    onClick={session.startSession}
+                    disabled={session.isRunning}
+                  >
+                    Start live session
+                  </ActionButton>
+                  <ActionButton onClick={resetSession}>Reset session</ActionButton>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+                  Session timer
+                </div>
+                <div className="mt-3 text-5xl font-semibold text-slate-50">
+                  {formatElapsed(session.elapsedSeconds)}
+                </div>
+                <div className="mt-2 text-sm text-slate-500">
+                  {session.isRunning ? "Session running" : "Ready"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+                  Next action
+                </div>
+                <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+                  <div className="text-2xl font-semibold text-slate-50">
+                    {nextTrigger ? nextTrigger.title : "Session finished"}
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-slate-400">
+                    {nextTrigger
+                      ? `${nextTrigger.body}. Over ${formatElapsed(secondsToNextAction)}.`
+                      : "Alle carb alerts uit de fueling timeline zijn verwerkt."}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-sm text-slate-300">
+                    {nextTrigger
+                      ? `Trigger minute ${nextTrigger.minute} · ${nextTrigger.tag}`
+                      : "Geen volgende carb-trigger."}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
               <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-                Combined session
+                Fuel timeline
               </div>
-              <div className={`mt-2 w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveSessionStatusClassName(sessionStatus)}`}>
-                {sessionStatus}
+              <div className="mt-1 text-sm text-slate-400">
+                Carb triggers komen rechtstreeks uit Python time_for_carbs.
               </div>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-                {message}
-              </p>
-              <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500">
-                Voor Niveau 1 moet deze pagina open blijven. Voor Niveau 2 moet
-                Web Push subscribed zijn; Vercel verstuurt alleen vaste
-                FuelPlan event-types naar jouw eigen device subscription.
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[360px]">
-              <ActionButton
-                onClick={startDemoSession}
-                disabled={isSessionRunning(sessionStatus)}
-              >
-                Start demo session
-              </ActionButton>
-              <ActionButton onClick={resetSession}>Reset session</ActionButton>
-            </div>
-          </div>
-        </section>
 
-        <section className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-              Session timer
-            </div>
-            <div className="mt-3 text-5xl font-semibold text-slate-50">
-              {formatElapsed(elapsedSeconds)}
-            </div>
-            <div className="mt-2 text-sm text-slate-500">
-              {isSessionRunning(sessionStatus) ? "Session running" : "Ready"}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-              Next action
-            </div>
-            <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-              <div className="text-2xl font-semibold text-slate-50">
-                {nextEvent ? nextEvent.title : "Session finished"}
+              <div className="mt-5 grid gap-3">
+                {session.calculatedFuelingPlan?.triggers.map((trigger) => (
+                  <TimelineRow
+                    key={trigger.tag}
+                    trigger={trigger}
+                    status={
+                      eventStatuses[trigger.minute] ?? {
+                        browser: "pending",
+                        webPush: "pending"
+                      }
+                    }
+                  />
+                ))}
               </div>
-              <div className="mt-2 text-sm leading-6 text-slate-400">
-                {nextEvent
-                  ? `${nextEvent.body} Over ${secondsToNextAction}s.`
-                  : "Alle demo alerts zijn verwerkt."}
-              </div>
-              <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/50 px-3 py-2 text-sm text-slate-300">
-                {isSessionRunning(sessionStatus)
-                  ? "Volgende actie volgt straks"
-                  : "Start de demo session voor live triggers."}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-800/80 bg-slate-950/40 p-5">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-            Fuel timeline
-          </div>
-          <div className="mt-1 text-sm text-slate-400">
-            Snelle testtriggers op 10s, 30s, 60s, 90s en 120s. Elke trigger
-            probeert Niveau 1 en Niveau 2 te verzenden.
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            {demoTimeline.map((event) => (
-              <TimelineRow
-                key={event.id}
-                event={event}
-                status={eventStatuses[event.id]}
-              />
-            ))}
-          </div>
-        </section>
+            </section>
+          </>
+        )}
       </div>
     </main>
   );
@@ -488,23 +429,25 @@ function ActionButton({
 }
 
 function TimelineRow({
-  event,
+  trigger,
   status
 }: {
-  event: DemoTimelineEvent;
+  trigger: FuelingCoreTrigger;
   status: EventDeliveryState;
 }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:grid-cols-[80px_90px_minmax(0,1fr)_120px_120px] lg:items-center">
+    <div className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:grid-cols-[80px_minmax(0,1fr)_120px_120px] lg:items-center">
       <div className="text-sm font-semibold text-cyan-200">
-        {formatElapsed(event.triggerAtSec)}
+        {trigger.minute} min
       </div>
-      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-        {event.type}
+      <div>
+        <div className="font-semibold text-slate-100">{trigger.body}</div>
+        <div className="mt-1 text-xs text-slate-500">
+          Reservoir {Math.round(trigger.carbReservoirG)}g · {trigger.tag}
+        </div>
       </div>
-      <div className="font-semibold text-slate-100">{event.body}</div>
-      <DeliveryPill label="N1" status={status.browser} />
-      <DeliveryPill label="N2" status={status.webPush} />
+      <DeliveryPill label="Browser" status={status.browser} />
+      <DeliveryPill label="Web Push" status={status.webPush} />
     </div>
   );
 }
@@ -513,7 +456,7 @@ function DeliveryPill({
   label,
   status
 }: {
-  label: "N1" | "N2";
+  label: "Browser" | "Web Push";
   status: DeliveryStatus;
 }) {
   return (
@@ -553,7 +496,7 @@ async function sendBrowserNotification(title: string, body: string, tag: string)
   }
 }
 
-async function sendWebPushNotification(event: DemoTimelineEvent) {
+async function sendWebPushNotification(trigger: FuelingCoreTrigger) {
   try {
     const subscription = await getActivePushSubscription();
 
@@ -565,7 +508,11 @@ async function sendWebPushNotification(event: DemoTimelineEvent) {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getPushAuthHeaders() },
       body: JSON.stringify({
-        eventType: event.id,
+        eventType: "carb",
+        title: trigger.title,
+        body: trigger.body,
+        tag: trigger.tag,
+        url: "/live-session",
         subscription: subscription.toJSON()
       })
     });
@@ -587,13 +534,12 @@ async function getActivePushSubscription() {
 }
 
 async function registerServiceWorker() {
-  const registration = await navigator.serviceWorker.register("/sw.js");
-  return registration;
+  return navigator.serviceWorker.register("/sw.js");
 }
 
-function createInitialStatuses() {
-  return demoTimeline.reduce<Record<string, EventDeliveryState>>((result, event) => {
-    result[event.id] = {
+function createInitialStatuses(triggers: FuelingCoreTrigger[]) {
+  return triggers.reduce<Record<string, EventDeliveryState>>((result, trigger) => {
+    result[trigger.minute] = {
       browser: "pending",
       webPush: "pending"
     };
@@ -603,10 +549,6 @@ function createInitialStatuses() {
 
 function isNotificationSupported() {
   return typeof window !== "undefined" && "Notification" in window;
-}
-
-function isSessionRunning(status: SessionStatus) {
-  return status === "session-running";
 }
 
 function formatElapsed(seconds: number) {
@@ -632,13 +574,17 @@ function resolveBrowserStatusClassName(status: string) {
   return "border-slate-600 bg-slate-900 text-slate-300";
 }
 
-function resolveSessionStatusClassName(status: SessionStatus) {
-  if (status === "session-running") {
+function resolveSessionStatusClassName(status: string) {
+  if (status === "running") {
     return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
   }
 
-  if (status === "session-finished") {
+  if (status === "finished") {
     return "border-cyan-400/40 bg-cyan-400/10 text-cyan-200";
+  }
+
+  if (status === "paused") {
+    return "border-amber-400/40 bg-amber-400/10 text-amber-200";
   }
 
   return "border-slate-700 bg-slate-900 text-slate-300";
@@ -651,6 +597,10 @@ function resolveDeliveryStatusClassName(status: DeliveryStatus) {
 
   if (status === "failed") {
     return "border-rose-400/40 bg-rose-400/10 text-rose-200";
+  }
+
+  if (status === "skipped") {
+    return "border-slate-700 bg-slate-900 text-slate-300";
   }
 
   return "border-slate-700 bg-slate-900 text-slate-300";
