@@ -63,6 +63,7 @@ export async function scheduleSessionEvent({
 }) {
   const response = await getQStashClient().publishJSON({
     url: getQStashTriggerUrl(),
+    headers: getQStashDeliveryHeaders(),
     body: {
       sessionId,
       eventId: event.eventId
@@ -72,6 +73,18 @@ export async function scheduleSessionEvent({
   });
 
   return "messageId" in response ? response.messageId : "";
+}
+
+export function getQStashDeliveryHeaders(): Record<string, string> | undefined {
+  const protectionBypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
+  if (!protectionBypass) {
+    return undefined;
+  }
+
+  return {
+    "x-vercel-protection-bypass": protectionBypass
+  };
 }
 
 export async function cancelQStashMessage(messageId: string) {

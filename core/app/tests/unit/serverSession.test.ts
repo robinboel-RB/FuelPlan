@@ -11,6 +11,7 @@ import {
   type ServerSessionStore
 } from "@/lib/session/sessionStore";
 import { triggerServerSessionEvent } from "@/lib/session/sessionActions";
+import { getQStashDeliveryHeaders } from "@/lib/session/qstash";
 import { sendPushRecordsWithStore } from "@/lib/push/delivery";
 
 const mocks = vi.hoisted(() => ({
@@ -69,6 +70,7 @@ describe("server-driven Level 2 sessions", () => {
     delete process.env.BLOB_READ_WRITE_TOKEN;
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
   });
 
   it("creates session timeline events from fueling triggers", () => {
@@ -160,6 +162,14 @@ describe("server-driven Level 2 sessions", () => {
     expect(first.body).toMatchObject({ ok: true, result: "sent" });
     expect(second.body).toMatchObject({ ok: true, result: "skipped" });
     expect(sendPushRecordsWithStore).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds Vercel protection bypass headers for QStash deliveries", () => {
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = "vercel-bypass-secret";
+
+    expect(getQStashDeliveryHeaders()).toEqual({
+      "x-vercel-protection-bypass": "vercel-bypass-secret"
+    });
   });
 });
 
