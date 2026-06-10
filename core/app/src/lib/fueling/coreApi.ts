@@ -321,9 +321,9 @@ function resolvePythonBinary() {
 
 function resolveEngineDir() {
   const candidates = [
-    path.resolve(process.cwd(), "..", "engine"),
-    path.resolve(process.cwd(), "core", "engine"),
-    path.resolve(process.cwd(), "engine")
+    path.resolve(process.cwd()),
+    path.resolve(process.cwd(), "core", "app"),
+    path.resolve(process.cwd(), "app")
   ];
 
   const engineDir = candidates.find((candidate) =>

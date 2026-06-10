@@ -1,14 +1,9 @@
-"""JSON stdin/stdout adapter for the FuelPlan Python core engine."""
+"""JSON stdin/stdout adapter for the local FuelPlan Python core."""
 
 from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
-
-APP_ROOT = Path(__file__).resolve().parents[1] / "app"
-if str(APP_ROOT) not in sys.path:
-    sys.path.insert(0, str(APP_ROOT))
 
 from fueling_core.adapter import calculate_from_payload, to_jsonable
 

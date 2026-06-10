@@ -36,6 +36,9 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      - name: Python core tests
+        run: npm run test:python
+
       - name: Build
         run: npm run build
 

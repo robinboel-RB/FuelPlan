@@ -1,134 +1,80 @@
-# FuelPlan Web App
+# FuelPlan App
 
-Next.js app voor de FuelPlan MVP.
+Next.js app, PWA, Web Push routes en deploybare Python fueling core.
 
-## Run
+## Belangrijke scripts
 
 ```bash
-npm install
 npm run dev
-```
-
-## Build
-
-```bash
 npm run build
+npm run test:unit
+npm run test:python
+npm run test:e2e
 ```
 
 ## Structuur
 
 ```text
-src/app       Next.js shell
-src/components PWA/install/push componenten
-src/ui        visuele React componenten
-src/state     React state en sessie-acties
-src/engine    pure FuelPlan berekeningen en fueling-output
-src/lib/push  Web Push, device-auth, rate limiting en subscription storage
-src/utils     generieke formatting/parsing helpers
-src/services  leeg in de MVP; alleen voor echte externe integraties
-api           Vercel Python Functions
-fueling_core  Python fueling core package
+api/fueling_core.py       Vercel Python Function
+fueling_core/             Python rekenkern
+fueling_core_cli.py       lokale CLI-adapter voor Next dev
+src/app/                  Next routes en API routes
+src/components/           PWA, push en watch componenten
+src/engine/               TS mapping naar coach/watch output
+src/integrations/watch/   gedeelde watch contracts
+src/lib/fueling/          bridge tussen Next en Python core
+src/lib/push/             Web Push auth, storage, rate limiting en delivery
+src/lib/session/          server-side live sessions en QStash events
+src/state/                React sessie-state
+src/types/                Fueling core types
+src/ui/                   setup- en guidance-panels
+src/utils/                formatting helpers
+tests/unit/               Vitest tests
+tests/e2e/                Playwright tests
+tests/python/             Python core tests
 ```
 
-De centrale rekenlogica staat in `fueling_core/engine.py` en wordt op Vercel
-uitgevoerd via `api/fueling_core.py`. De Next API route
-`src/app/api/fueling/calculate/route.ts` valideert de browser-input en proxyt in
-productie naar die Python Function.
-React componenten mogen alleen data tonen en user input doorgeven.
+## Rekenkern
 
-## Horloge-alerts
+De centrale sportlogica staat in `fueling_core/engine.py`. De browser gebruikt
+`src/app/api/fueling/calculate/route.ts`; lokaal draait die route
+`fueling_core_cli.py`, op Vercel proxyt hij naar `api/fueling_core.py`.
 
-De MVP koppelt geen watch provider rechtstreeks. Horloge-alerts verlopen via
-telefoonmeldingen. Zorg dat de smartwatch telefoonmeldingen spiegelt.
+React componenten mogen geen sportformules bevatten. Zij geven input door en
+tonen de output uit de Python core en de TypeScript mappinglaag.
 
 ## PWA Web Push
 
-De PWA route staat op:
+De live coach staat op `/live-session`.
+
+- Niveau 1 gebruikt browser/service-worker notifications.
+- Niveau 2 gebruikt Web Push via server routes, device-scoped auth headers,
+  QStash-delayed events en subscription storage.
+
+Storagevolgorde:
 
 ```text
-/live-session
+Vercel Blob -> Upstash Redis REST -> memory
 ```
 
-MVP-route:
+Memory is alleen geschikt voor lokale development.
+
+## Environment
+
+Gebruik `.env.example` als startpunt. Minimaal voor echte Web Push:
 
 ```text
-Niveau 1  Fueling timeline -> browser Notification API -> telefoon -> horloge
-Niveau 2  Fueling timeline -> Web Push via Vercel -> telefoon -> horloge
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT
 ```
 
-De live session pagina gebruikt de laatste berekende Python fueling timeline.
-Op Android gebruikt Niveau 1 `registration.showNotification()` via de service
-worker. Niveau 2 gebruikt een device-scoped PushSubscription met install-id,
-device-id en install-secret headers. Vercel stuurt alleen FuelPlan events naar
-de subscription die bij die lokale install hoort.
-De client synchroniseert de actieve browser subscription opnieuw bij page-load,
-test push en elk carb-event, zodat de memory fallback ook na een cold start
-herstelt.
-Met Vercel Blob blijft Niveau 2 persistent over Vercel cold starts heen.
-
-Belangrijke bestanden:
+Voor persistente push/session scheduling:
 
 ```text
-public/manifest.json
-public/sw.js
-src/components/PushNotificationManager.tsx
-src/app/api/push/*
-src/lib/push/auth.ts
-src/lib/push/events.ts
-src/lib/push/subscriptions.ts
-src/lib/push/webpush.ts
+BLOB_READ_WRITE_TOKEN
+PUSH_ADMIN_TOKEN
+QSTASH_TOKEN
+QSTASH_CURRENT_SIGNING_KEY
+QSTASH_NEXT_SIGNING_KEY
 ```
-
-Genereer VAPID keys:
-
-```bash
-npx web-push generate-vapid-keys
-```
-
-Gebruik `.env.example` als template. Zet lokaal in `.env.local` en in Vercel:
-
-```text
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:hello@example.com
-BLOB_READ_WRITE_TOKEN=...
-UPSTASH_REDIS_REST_URL=...
-UPSTASH_REDIS_REST_TOKEN=...
-PUSH_ADMIN_TOKEN=...
-```
-
-Production storage gebruikt eerst Vercel Blob. Upstash Redis REST blijft als
-latere optionele fallback in de adapter. Zonder Blob of Upstash-configuratie
-valt lokale development terug op memory storage; die fallback is niet
-betrouwbaar op Vercel serverless.
-
-De service worker precachet de app shell, gebruikt cache-first voor statische
-assets en network-first voor navigatie met `/offline` als fallback.
-
-`/api/push/send` accepteert geen vrije publieke payloads. Carb-alerts worden
-verstuurd als FuelPlan events uit de actieve Python timeline, met tags zoals
-`fuelplan-carb-45`.
-
-`/api/push/status` toont voor de huidige install de actieve storage mode
-(`blob`, `upstash` of `memory`) en of de server-side subscription bestaat.
-
-## Tests en CI
-
-```bash
-npx tsc --noEmit
-npm run test:unit
-npm run build
-npm run test:e2e
-```
-
-De root workflow `.github/workflows/ci.yml` draait deze checks op GitHub.
-
-## Vercel
-
-Deploy deze map als project root:
-
-```text
-core/app
-```
-
-Gebruik het Next.js framework preset en de standaard Vercel output settings.

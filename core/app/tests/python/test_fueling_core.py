@@ -1,17 +1,6 @@
 import unittest
 
-try:
-    from fueling_core import (
-        SessionPoint,
-        UserStaticInputs,
-        calculate_fueling_plan,
-    )
-except ModuleNotFoundError:
-    from .fueling_core import (
-        SessionPoint,
-        UserStaticInputs,
-        calculate_fueling_plan,
-    )
+from fueling_core import SessionPoint, UserStaticInputs, calculate_fueling_plan
 
 
 class FuelingCoreTests(unittest.TestCase):
