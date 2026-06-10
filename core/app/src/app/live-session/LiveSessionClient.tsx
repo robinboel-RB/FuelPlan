@@ -15,6 +15,7 @@ type BrowserNotificationStatus =
   | "permission-denied";
 type DeliveryStatus = "pending" | "sent" | "failed" | "skipped";
 type ServerEventStatus = "scheduled" | "sent" | "failed" | "skipped" | "cancelled";
+type ServerEventDisplayStatus = ServerEventStatus | "not-planned";
 
 interface EventDeliveryState {
   browser: DeliveryStatus;
@@ -51,6 +52,7 @@ interface ServerSessionStatusResponse {
     status: "active" | "stopped" | "finished" | "expired";
     events: ServerSessionEvent[];
   };
+  scheduledCount?: number;
   sentCount?: number;
   failedCount?: number;
   nextEvent?: ServerSessionEvent | null;
@@ -62,6 +64,8 @@ interface ServerSessionStartResponse {
   sessionId?: string;
   storageMode?: string;
   scheduledEventCount?: number;
+  failedScheduleCount?: number;
+  scheduleErrors?: string[];
   events?: ServerSessionEvent[];
 }
 
@@ -154,6 +158,7 @@ export function LiveSessionClient() {
     session.calculationStatus === "ready" && Boolean(session.calculatedFuelingPlan);
   const readiness = serverStatus?.readiness;
   const serverEvents = serverStatus?.session?.events ?? [];
+  const serverEventCounts = summarizeServerEvents(serverEvents);
   const nextServerEvent = serverStatus?.nextEvent ?? null;
 
   const enableBrowserNotifications = async () => {
@@ -243,23 +248,48 @@ export function LiveSessionClient() {
       });
       const result = (await response.json()) as ServerSessionStartResponse;
 
-      if (!response.ok || !result.ok || !result.sessionId) {
+      if (result.sessionId && result.events) {
+        setServerSessionId(result.sessionId);
+        setServerStatus({
+          ok: result.ok,
+          error: result.error,
+          storageMode: result.storageMode as "blob" | "upstash" | "memory" | undefined,
+          session: {
+            sessionId: result.sessionId,
+            status: result.ok ? "active" : "stopped",
+            events: result.events
+          },
+          scheduledCount: result.scheduledEventCount ?? 0,
+          failedCount: result.failedScheduleCount ?? 0,
+          sentCount: 0,
+          nextEvent:
+            result.events.find((event) => event.status === "scheduled") ?? null
+        });
+      }
+
+      if (!result.sessionId) {
         throw new Error(result.error || "Level 2 server session start failed");
       }
 
-      setServerSessionId(result.sessionId);
-      setServerMessage(
-        `Level 2 actief: ${result.scheduledEventCount ?? 0} events gepland.`
-      );
-      setServerStatus({
-        ok: true,
-        storageMode: result.storageMode as "blob" | "upstash" | "memory" | undefined,
-        session: {
-          sessionId: result.sessionId,
-          status: "active",
-          events: result.events ?? []
-        }
-      });
+      if (!response.ok || !result.ok) {
+        const detail =
+          result.scheduleErrors?.length
+            ? `: ${result.scheduleErrors.join(" | ")}`
+            : "";
+        setServerMessage(
+          `${result.error || "Level 2 server session start failed"}${detail}`
+        );
+        return;
+      }
+
+      if ((result.scheduledEventCount ?? 0) === 0) {
+        setServerMessage("QStash scheduling failed: 0 events gepland.");
+      } else {
+        setServerMessage(
+          `Level 2 actief: ${result.scheduledEventCount ?? 0} events gepland, ${result.failedScheduleCount ?? 0} gefaald.`
+        );
+      }
+
       void refreshServerStatus(result.sessionId);
     } catch (error) {
       setServerMessage(
@@ -491,11 +521,19 @@ export function LiveSessionClient() {
                   </ActionButton>
                 </div>
               </div>
-              <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <div className="mt-5 grid gap-3 md:grid-cols-5">
                 <Metric label="Storage" value={serverStatus?.storageMode ?? "unknown"} />
                 <Metric
                   label="Scheduled"
-                  value={String(serverEvents.filter((event) => event.status === "scheduled").length)}
+                  value={String(serverStatus?.scheduledCount ?? serverEventCounts.scheduled)}
+                />
+                <Metric
+                  label="Failed"
+                  value={String(serverStatus?.failedCount ?? serverEventCounts.failed)}
+                />
+                <Metric
+                  label="Sent"
+                  value={String(serverStatus?.sentCount ?? serverEventCounts.sent)}
                 />
                 <Metric
                   label="Next server event"
@@ -726,7 +764,14 @@ function TimelineRow({
         </div>
       </div>
       <DeliveryPill label="Level 1" status={status.browser} />
-      <ServerStatusPill status={serverEvent?.status ?? "scheduled"} />
+      <div className="space-y-2">
+        <ServerStatusPill status={serverEvent?.status ?? "not-planned"} />
+        {serverEvent?.lastError ? (
+          <div className="text-xs leading-5 text-rose-200">
+            {serverEvent.lastError}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -745,7 +790,7 @@ function DeliveryPill({
   );
 }
 
-function ServerStatusPill({ status }: { status: ServerEventStatus }) {
+function ServerStatusPill({ status }: { status: ServerEventDisplayStatus }) {
   return (
     <div className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${resolveServerEventStatusClassName(status)}`}>
       Level 2 {status}
@@ -794,6 +839,14 @@ function createInitialStatuses(triggers: FuelingCoreTrigger[]) {
     };
     return result;
   }, {});
+}
+
+function summarizeServerEvents(events: ServerSessionEvent[]) {
+  return {
+    scheduled: events.filter((event) => event.status === "scheduled").length,
+    failed: events.filter((event) => event.status === "failed").length,
+    sent: events.filter((event) => event.status === "sent").length
+  };
 }
 
 function isNotificationSupported() {
@@ -860,7 +913,7 @@ function resolveDeliveryStatusClassName(status: DeliveryStatus) {
   return "border-slate-700 bg-slate-900 text-slate-300";
 }
 
-function resolveServerEventStatusClassName(status: ServerEventStatus) {
+function resolveServerEventStatusClassName(status: ServerEventDisplayStatus) {
   if (status === "sent") {
     return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
   }

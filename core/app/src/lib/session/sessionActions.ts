@@ -20,6 +20,7 @@ import {
   assertQStashReady,
   cancelQStashMessage,
   getQStashReadiness,
+  getQStashTriggerUrl,
   scheduleSessionEvent
 } from "@/lib/session/qstash";
 
@@ -34,6 +35,8 @@ export interface SessionStartResponse {
   sessionId?: string;
   storageMode?: string;
   scheduledEventCount?: number;
+  failedScheduleCount?: number;
+  scheduleErrors?: string[];
   events?: ServerSessionEvent[];
 }
 
@@ -44,6 +47,7 @@ export interface SessionStatusResponse {
   pushStorageMode?: string;
   readiness?: ReturnType<typeof getLevel2Readiness>;
   session?: ServerFuelingSession;
+  scheduledCount?: number;
   sentCount?: number;
   failedCount?: number;
   nextEvent?: ServerSessionEvent | null;
@@ -136,17 +140,43 @@ export async function startServerSession(
     }
   }
 
+  const scheduledEventCount = scheduledEvents.filter(
+    (event) => event.status === "scheduled"
+  ).length;
+  const failedScheduleCount = scheduledEvents.filter(
+    (event) => event.status === "failed"
+  ).length;
+  const scheduleErrors = scheduledEvents
+    .filter((event) => event.status === "failed" && event.lastError)
+    .map((event) => `${event.eventId}: ${event.lastError}`);
+  const allSchedulesFailed = session.events.length > 0 && scheduledEventCount === 0;
   const saved = await store.saveSession({
     ...session,
+    status: allSchedulesFailed ? "stopped" : "active",
     events: scheduledEvents,
     updatedAt: Date.now()
   });
+
+  if (allSchedulesFailed) {
+    return jsonResult(502, {
+      ok: false,
+      error: "QStash scheduling failed for all session events",
+      sessionId: saved.sessionId,
+      storageMode: getServerSessionStorageMode(),
+      scheduledEventCount,
+      failedScheduleCount,
+      scheduleErrors,
+      events: saved.events
+    });
+  }
 
   return jsonResult(200, {
     ok: true,
     sessionId: saved.sessionId,
     storageMode: getServerSessionStorageMode(),
-    scheduledEventCount: saved.events.filter((event) => event.status === "scheduled").length,
+    scheduledEventCount,
+    failedScheduleCount,
+    scheduleErrors,
     events: saved.events
   });
 }
@@ -312,10 +342,27 @@ export async function getServerSessionStatus(
     storageMode: getServerSessionStorageMode(),
     pushStorageMode: getPushSubscriptionStorageMode(),
     session: summary.session,
+    scheduledCount: summary.scheduledCount,
     sentCount: summary.sentCount,
     failedCount: summary.failedCount,
     nextEvent: summary.nextEvent
   });
+}
+
+export function getQStashReadinessDebug() {
+  const qstash = getQStashReadiness();
+
+  return {
+    ok: qstash.ok,
+    missing: qstash.missing,
+    qstashUrlPresent: qstash.hasQStashUrl,
+    qstashTokenPresent: qstash.hasQStashToken,
+    currentSigningKeyPresent: qstash.hasCurrentSigningKey,
+    nextSigningKeyPresent: qstash.hasNextSigningKey,
+    nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL ?? "",
+    triggerUrl: qstash.triggerUrl ?? safeTriggerUrl(),
+    storageMode: getServerSessionStorageMode()
+  };
 }
 
 export async function runSessionWatchdog() {
@@ -567,4 +614,12 @@ function parseTimeline(body: unknown): SessionTimelineInputEvent[] {
 
 function jsonResult<T>(status: number, body: T): ActionResult<T> {
   return { status, body };
+}
+
+function safeTriggerUrl() {
+  try {
+    return getQStashTriggerUrl();
+  } catch {
+    return "";
+  }
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PUSH_AUTH_HEADERS } from "@/lib/push/identity";
 import { hashInstallSecret } from "@/lib/push/auth";
 import { POST as startRoutePost } from "@/app/api/session/start/route";
+import { GET as qstashReadinessGet } from "@/app/api/session/qstash-readiness/route";
 import {
   createServerSessionRecord,
   createSessionEvents,
@@ -11,7 +12,10 @@ import {
   type ServerSessionStore
 } from "@/lib/session/sessionStore";
 import { triggerServerSessionEvent } from "@/lib/session/sessionActions";
-import { getQStashDeliveryHeaders } from "@/lib/session/qstash";
+import {
+  getQStashDeliveryHeaders,
+  setQStashClientForTesting
+} from "@/lib/session/qstash";
 import { sendPushRecordsWithStore } from "@/lib/push/delivery";
 
 const mocks = vi.hoisted(() => ({
@@ -28,6 +32,12 @@ const mocks = vi.hoisted(() => ({
     markSuccess: vi.fn(),
     markFailure: vi.fn(),
     removeByEndpoint: vi.fn()
+  },
+  qstashClient: {
+    publishJSON: vi.fn(),
+    messages: {
+      cancel: vi.fn()
+    }
   }
 }));
 
@@ -54,11 +64,15 @@ describe("server-driven Level 2 sessions", () => {
     mocks.pushStore.markSuccess.mockReset();
     mocks.pushStore.markFailure.mockReset();
     mocks.pushStore.removeByEndpoint.mockReset();
+    mocks.qstashClient.publishJSON.mockReset();
+    mocks.qstashClient.messages.cancel.mockReset();
     vi.mocked(sendPushRecordsWithStore).mockClear();
     vi.mocked(sendPushRecordsWithStore).mockImplementation(() =>
       Promise.resolve(mocks.sendSummary)
     );
     setServerSessionStoreForTesting(createTestSessionStore(sessions));
+    setQStashClientForTesting(mocks.qstashClient as never);
+    process.env.QSTASH_URL = "https://qstash.upstash.io";
     process.env.QSTASH_TOKEN = "qstash-token";
     process.env.QSTASH_CURRENT_SIGNING_KEY = "current-signing-key";
     process.env.QSTASH_NEXT_SIGNING_KEY = "next-signing-key";
@@ -125,6 +139,64 @@ describe("server-driven Level 2 sessions", () => {
 
     expect(response.status).toBe(404);
     expect(body.error).toBe("No active subscription for this device");
+  });
+
+  it("/api/session/start fails with event errors when QStash returns no messageId", async () => {
+    mocks.pushStore.getByOwner.mockResolvedValue(createStoredPushSubscription());
+    mocks.qstashClient.publishJSON.mockResolvedValue({});
+
+    const response = await startRoutePost(
+      new Request("https://fuelplan.example/api/session/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...createAuthHeaders()
+        },
+        body: JSON.stringify({
+          timeline: [{ minute: 16, tag: "fuelplan-carb-16" }]
+        })
+      })
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toMatchObject({
+      ok: false,
+      error: "QStash scheduling failed for all session events",
+      scheduledEventCount: 0,
+      failedScheduleCount: 1
+    });
+    expect(body.scheduleErrors[0]).toContain("QStash publishJSON returned no messageId");
+    expect(body.events[0]).toMatchObject({
+      status: "failed",
+      attempts: 1
+    });
+    expect(body.events[0].lastError).toContain(
+      "QStash publishJSON returned no messageId"
+    );
+
+    const stored = sessions.get(body.sessionId);
+    expect(stored?.status).toBe("stopped");
+  });
+
+  it("returns safe QStash readiness diagnostics", async () => {
+    const response = await qstashReadinessGet();
+    const body = await response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      qstashUrlPresent: true,
+      qstashTokenPresent: true,
+      currentSigningKeyPresent: true,
+      nextSigningKeyPresent: true,
+      nextPublicAppUrl: "https://fuelplan.example",
+      triggerUrl: "https://fuelplan.example/api/session/trigger",
+      storageMode: "memory"
+    });
+    expect(serialized).not.toContain("qstash-token");
+    expect(serialized).not.toContain("current-signing-key");
+    expect(serialized).not.toContain("next-signing-key");
   });
 
   it("ignores stopped sessions in the trigger path", async () => {

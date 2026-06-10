@@ -139,6 +139,9 @@ export function createSessionEvents(
 }
 
 export function summarizeSession(session: ServerFuelingSession) {
+  const scheduledCount = session.events.filter(
+    (event) => event.status === "scheduled"
+  ).length;
   const sentCount = session.events.filter((event) => event.status === "sent").length;
   const failedCount = session.events.filter((event) => event.status === "failed").length;
   const nextEvent =
@@ -147,6 +150,7 @@ export function summarizeSession(session: ServerFuelingSession) {
 
   return {
     session,
+    scheduledCount,
     sentCount,
     failedCount,
     nextEvent
