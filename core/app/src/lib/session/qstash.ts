@@ -12,6 +12,13 @@ export interface QStashReadiness {
   hasNextSigningKey: boolean;
 }
 
+export interface QStashTokenProbe {
+  checked: boolean;
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
 let client: Client | null = null;
 
 export function getQStashClient() {
@@ -131,8 +138,7 @@ export async function scheduleSessionEvent({
 
     return messageId;
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "QStash publishJSON failed";
+    const message = normalizeQStashError(error);
 
     console.error("FuelPlan QStash schedule failed", {
       ...diagnostics,
@@ -143,6 +149,54 @@ export async function scheduleSessionEvent({
   }
 }
 
+export async function probeQStashToken(): Promise<QStashTokenProbe> {
+  const token = process.env.QSTASH_TOKEN;
+  const baseUrl = normalizeQStashBaseUrl(process.env.QSTASH_URL);
+
+  if (!token || !baseUrl) {
+    return {
+      checked: false,
+      ok: false,
+      error: "QSTASH_URL or QSTASH_TOKEN is missing"
+    };
+  }
+
+  try {
+    const response = await fetch(
+      `${baseUrl}/v2/messages/fuelplan-readiness-probe`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        cache: "no-store"
+      }
+    );
+
+    if (response.status === 401 || response.status === 403) {
+      return {
+        checked: true,
+        ok: false,
+        status: response.status,
+        error:
+          "QStash token rejected. Set QSTASH_TOKEN to the token from the Upstash QStash dashboard, not a signing key or Redis token."
+      };
+    }
+
+    return {
+      checked: true,
+      ok: true,
+      status: response.status
+    };
+  } catch (error) {
+    return {
+      checked: true,
+      ok: false,
+      error: normalizeQStashError(error)
+    };
+  }
+}
+
 function readQStashMessageId(response: unknown) {
   if (!response || typeof response !== "object") {
     return "";
@@ -150,6 +204,32 @@ function readQStashMessageId(response: unknown) {
 
   const candidate = response as { messageId?: unknown };
   return typeof candidate.messageId === "string" ? candidate.messageId.trim() : "";
+}
+
+function normalizeQStashError(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error);
+  const parsed = parseJsonErrorMessage(raw);
+  const message = parsed || raw || "QStash publishJSON failed";
+
+  if (message.toLowerCase().includes("unable to authenticate: invalid token")) {
+    return "QStash authentication failed: invalid token. Check QSTASH_TOKEN in Vercel; it must be the Upstash QStash token, not QSTASH_CURRENT_SIGNING_KEY, QSTASH_NEXT_SIGNING_KEY, or a Redis token.";
+  }
+
+  return message;
+}
+
+function parseJsonErrorMessage(raw: string) {
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    return typeof parsed.error === "string" ? parsed.error : "";
+  } catch {
+    return "";
+  }
+}
+
+function normalizeQStashBaseUrl(value: string | undefined) {
+  const baseUrl = value?.trim().replace(/\/+$/, "");
+  return baseUrl || "";
 }
 
 export function getQStashDeliveryHeaders(): Record<string, string> | undefined {

@@ -274,7 +274,7 @@ export function LiveSessionClient() {
       if (!response.ok || !result.ok) {
         const detail =
           result.scheduleErrors?.length
-            ? `: ${result.scheduleErrors.join(" | ")}`
+            ? `: ${result.scheduleErrors[0]}`
             : "";
         setServerMessage(
           `${result.error || "Level 2 server session start failed"}${detail}`

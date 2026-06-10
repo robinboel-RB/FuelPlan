@@ -21,6 +21,7 @@ import {
   cancelQStashMessage,
   getQStashReadiness,
   getQStashTriggerUrl,
+  probeQStashToken,
   scheduleSessionEvent
 } from "@/lib/session/qstash";
 
@@ -148,7 +149,8 @@ export async function startServerSession(
   ).length;
   const scheduleErrors = scheduledEvents
     .filter((event) => event.status === "failed" && event.lastError)
-    .map((event) => `${event.eventId}: ${event.lastError}`);
+    .map((event) => event.lastError as string)
+    .filter((error, index, errors) => errors.indexOf(error) === index);
   const allSchedulesFailed = session.events.length > 0 && scheduledEventCount === 0;
   const saved = await store.saveSession({
     ...session,
@@ -349,8 +351,9 @@ export async function getServerSessionStatus(
   });
 }
 
-export function getQStashReadinessDebug() {
+export async function getQStashReadinessDebug() {
   const qstash = getQStashReadiness();
+  const tokenProbe = await probeQStashToken();
 
   return {
     ok: qstash.ok,
@@ -359,6 +362,7 @@ export function getQStashReadinessDebug() {
     qstashTokenPresent: qstash.hasQStashToken,
     currentSigningKeyPresent: qstash.hasCurrentSigningKey,
     nextSigningKeyPresent: qstash.hasNextSigningKey,
+    tokenProbe,
     nextPublicAppUrl: process.env.NEXT_PUBLIC_APP_URL ?? "",
     triggerUrl: qstash.triggerUrl ?? safeTriggerUrl(),
     storageMode: getServerSessionStorageMode()

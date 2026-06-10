@@ -59,6 +59,7 @@ describe("server-driven Level 2 sessions", () => {
   let sessions: Map<string, ServerFuelingSession>;
 
   beforeEach(() => {
+    vi.unstubAllGlobals();
     sessions = new Map();
     mocks.pushStore.getByOwner.mockReset();
     mocks.pushStore.markSuccess.mockReset();
@@ -166,6 +167,7 @@ describe("server-driven Level 2 sessions", () => {
       scheduledEventCount: 0,
       failedScheduleCount: 1
     });
+    expect(body.scheduleErrors).toHaveLength(1);
     expect(body.scheduleErrors[0]).toContain("QStash publishJSON returned no messageId");
     expect(body.events[0]).toMatchObject({
       status: "failed",
@@ -180,6 +182,15 @@ describe("server-driven Level 2 sessions", () => {
   });
 
   it("returns safe QStash readiness diagnostics", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          status: 404
+        } as Response)
+      )
+    );
+
     const response = await qstashReadinessGet();
     const body = await response.json();
     const serialized = JSON.stringify(body);
@@ -190,6 +201,11 @@ describe("server-driven Level 2 sessions", () => {
       qstashTokenPresent: true,
       currentSigningKeyPresent: true,
       nextSigningKeyPresent: true,
+      tokenProbe: {
+        checked: true,
+        ok: true,
+        status: 404
+      },
       nextPublicAppUrl: "https://fuelplan.example",
       triggerUrl: "https://fuelplan.example/api/session/trigger",
       storageMode: "memory"

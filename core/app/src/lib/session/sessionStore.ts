@@ -145,8 +145,7 @@ export function summarizeSession(session: ServerFuelingSession) {
   const sentCount = session.events.filter((event) => event.status === "sent").length;
   const failedCount = session.events.filter((event) => event.status === "failed").length;
   const nextEvent =
-    session.events.find((event) => event.status === "scheduled" || event.status === "failed") ??
-    null;
+    session.events.find((event) => event.status === "scheduled") ?? null;
 
   return {
     session,
