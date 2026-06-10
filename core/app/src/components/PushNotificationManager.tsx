@@ -102,11 +102,12 @@ export function PushNotificationManager() {
 
       const registration = await registerServiceWorker();
       const existing = await registration.pushManager.getSubscription();
+      const applicationServerKey = getVapidApplicationServerKey();
       const nextSubscription =
         existing ||
         (await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+          applicationServerKey
         }));
 
       const response = await ensureServerSubscription(nextSubscription);
@@ -119,9 +120,9 @@ export function PushNotificationManager() {
       setStatus("subscribed");
       setMessage("Web Push actief en server-side geregistreerd.");
       recordClientPushTelemetry("subscribe_success");
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage("Push subscription failed.");
+      setMessage(`Push subscription failed: ${formatPushError(error)}`);
       recordClientPushTelemetry("subscribe_failure");
     } finally {
       setIsBusy(false);
@@ -147,9 +148,9 @@ export function PushNotificationManager() {
       setHasServerSubscription(false);
       setStatus("unsubscribed");
       setMessage("Web Push notifications uitgeschakeld.");
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage("Disable push failed.");
+      setMessage(`Disable push failed: ${formatPushError(error)}`);
     } finally {
       setIsBusy(false);
     }
@@ -189,9 +190,9 @@ export function PushNotificationManager() {
       setSubscription(activeSubscription);
       setStatus("subscribed");
       setMessage("Test push verzonden. Check telefoon en gekoppeld horloge.");
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage("Push send failed.");
+      setMessage(`Push send failed: ${formatPushError(error)}`);
     } finally {
       setIsBusy(false);
     }
@@ -215,7 +216,11 @@ export function PushNotificationManager() {
 
         if (!response.ok) {
           setStatus("error");
-          setMessage("Browser subscription bestaat, maar server sync failed.");
+          setMessage(
+            `Browser subscription bestaat, maar server sync failed: ${
+              response.error || "unknown server error"
+            }`
+          );
           return;
         }
 
@@ -240,9 +245,9 @@ export function PushNotificationManager() {
           ? "Zet Web Push aan om achtergrondmeldingen via Vercel te testen."
           : "Push is toegestaan, maar er is geen actieve subscription."
       );
-    } catch {
+    } catch (error) {
       setStatus("error");
-      setMessage("Service worker registratie mislukt.");
+      setMessage(`Service worker registratie mislukt: ${formatPushError(error)}`);
     }
   }
 
@@ -445,7 +450,8 @@ function getHttpsHint() {
 }
 
 async function registerServiceWorker() {
-  return navigator.serviceWorker.register("/sw.js");
+  await navigator.serviceWorker.register("/sw.js");
+  return navigator.serviceWorker.ready;
 }
 
 async function postJson<T>(
@@ -459,7 +465,31 @@ async function postJson<T>(
     body: JSON.stringify(body)
   });
 
-  return response.json() as Promise<T>;
+  const payload = (await response.json().catch(() => null)) as
+    | (T & { error?: string })
+    | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `HTTP ${response.status}`);
+  }
+
+  if (!payload) {
+    throw new Error("Invalid JSON response");
+  }
+
+  return payload;
+}
+
+function getVapidApplicationServerKey() {
+  const key = urlBase64ToUint8Array(vapidPublicKey);
+
+  if (key.byteLength !== 65) {
+    throw new Error(
+      `Invalid VAPID public key (${key.byteLength} bytes). Expected 65 bytes.`
+    );
+  }
+
+  return key;
 }
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -473,6 +503,18 @@ function urlBase64ToUint8Array(base64String: string) {
   }
 
   return outputArray;
+}
+
+function formatPushError(error: unknown) {
+  if (error instanceof DOMException) {
+    return `${error.name}: ${error.message}`;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "unknown error";
 }
 
 function recordClientPushTelemetry(event: string) {

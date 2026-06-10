@@ -68,6 +68,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     storageMode: getPushSubscriptionStorageMode(),
+    hasServerSubscription: true,
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
