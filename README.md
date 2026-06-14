@@ -8,7 +8,7 @@ sessiedata. De runtime-app staat volledig in `core/app`.
 
 - Athlete- en segmentinput normaliseren: gewicht, leeftijd, lengte, HR, VO2max,
   vetpercentage, tempo, duur, helling, hoogtemeters, temperatuur en terrein.
-- Een Python fueling core draaien op basis van de oorspronkelijke Excel-logica.
+- Een Python fueling core draaien op basis van de gevalideerde rekenlogica.
 - Per minuut Keytel, Minetti, RER, carb burn, reservoir en totale kcal bepalen.
 - Carb-triggers genereren zodra de sessie opnieuw 30g koolhydraatverbruik kruist.
 - Een dashboard tonen met setup, live guidance, intake/skip-acties en watch UI.
@@ -49,7 +49,6 @@ sessiedata. De runtime-app staat volledig in `core/app`.
 
 `docs/` bevat alleen de sport-science referenties:
 
-- `Energy_calculator.xlsx`
 - `Fueling_plan.pdf`
 - `FuelPlan_MVP_Wiskundige_Samenvatting.*`
 
