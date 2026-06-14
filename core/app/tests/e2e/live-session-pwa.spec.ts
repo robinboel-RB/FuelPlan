@@ -5,14 +5,17 @@ test("live session renders PWA controls", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Live Fuel Coach" })).toBeVisible();
   await expect(page.getByText("PWA install", { exact: true })).toBeVisible();
-  await expect(page.getByText("Level 1", { exact: true })).toBeVisible();
-  await expect(page.getByText("Niveau 2 Web Push status", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Prepare Web Push|Enable Web Push/ })).toBeVisible();
+  await expect(page.getByText("Web Push setup", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Enable Web Push notification" })).toBeVisible();
+  await expect(page.getByText("Session control", { exact: true })).toBeVisible();
   await expect(page.getByText("Geen actieve sessie", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Ga naar dashboard en start een sessie.", { exact: true })
   ).toBeVisible();
-  await expect(page.getByText(["Start ", "demo", " session"].join(""))).toHaveCount(0);
+  await expect(page.getByText("Niveau 1")).toHaveCount(0);
+  await expect(page.getByText("Niveau 2")).toHaveCount(0);
+  await expect(page.getByText("Level 1")).toHaveCount(0);
+  await expect(page.getByText("Level 2")).toHaveCount(0);
 });
 
 test("permission denied state is shown after explicit permission action", async ({ page }) => {
@@ -34,8 +37,7 @@ test("permission denied state is shown after explicit permission action", async 
 
   await page.goto("/live-session");
 
-  await page.getByRole("button", { name: "Prepare Web Push" }).click();
-  await page.getByRole("button", { name: "Enable Web Push" }).click();
+  await page.getByRole("button", { name: "Enable Web Push notification" }).click();
 
   await expect(page.getByText("permission denied")).toBeVisible();
   await expect(
@@ -73,7 +75,9 @@ test("dashboard stores fueling plan and opens live session with real carb trigge
   await page.getByRole("button", { name: "Start live PWA coach" }).first().click();
 
   await expect(page).toHaveURL(/\/live-session/);
-  await expect(page.getByRole("button", { name: "Start live session" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start demo session" })).toBeVisible();
+  await expect(page.getByText("Next action", { exact: true })).toBeVisible();
+  await expect(page.getByText("Alert timeline", { exact: true })).toBeVisible();
   await expect(page.getByText("Neem 30g carbs").first()).toBeVisible();
   await expect(page.getByText(/fuelplan-carb-/).first()).toBeVisible();
 });

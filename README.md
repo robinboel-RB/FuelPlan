@@ -8,14 +8,14 @@ sessiedata. De runtime-app staat volledig in `core/app`.
 
 - Athlete- en segmentinput normaliseren: gewicht, leeftijd, lengte, HR, VO2max,
   vetpercentage, tempo, duur, helling, hoogtemeters, temperatuur en terrein.
-- Een Python fueling core draaien op basis van de oorspronkelijke Excel-logica.
+- Een Python fueling core draaien voor de sport-fueling berekeningen.
 - Per minuut Keytel, Minetti, RER, carb burn, reservoir en totale kcal bepalen.
 - Carb-triggers genereren zodra de sessie opnieuw 30g koolhydraatverbruik kruist.
 - Een dashboard tonen met setup, live guidance, intake/skip-acties en watch UI.
 - Een PWA live-session draaien via `/live-session`.
-- Browser-notifications en servergestuurde Web Push sturen naar telefoon/horloge.
+- Browsernotifications en servergestuurde Web Push sturen naar telefoon/horloge.
 - Push-subscriptions opslaan via Vercel Blob, Upstash fallback of lokale memory.
-- Server-side live sessie-events plannen met QStash.
+- Server-side live sessie-events plannen met QStash delayed events.
 - Offline fallback aanbieden via service worker.
 
 ## Structuur
@@ -49,7 +49,6 @@ sessiedata. De runtime-app staat volledig in `core/app`.
 
 `docs/` bevat alleen de sport-science referenties:
 
-- `Energy_calculator.xlsx`
 - `Fueling_plan.pdf`
 - `FuelPlan_MVP_Wiskundige_Samenvatting.*`
 
@@ -81,7 +80,10 @@ Python core; de TypeScript engine vertaalt de core-output naar UI- en watch-data
 `/live-session` ondersteunt twee notification-niveaus:
 
 - Niveau 1: lokale browser/service-worker notification zolang de pagina actief is.
-- Niveau 2: servergestuurde Web Push via Vercel, QStash en PushSubscription.
+- Niveau 2: servergestuurde Web Push via Vercel, QStash en opgeslagen PushSubscription.
+
+In development valt subscription- en sessiestorage terug op memory. In productie
+vereist niveau 2 persistente storage via Vercel Blob of Upstash Redis REST.
 
 Belangrijke environment variables:
 
@@ -89,32 +91,48 @@ Belangrijke environment variables:
 NEXT_PUBLIC_VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY
 VAPID_SUBJECT
-BLOB_READ_WRITE_TOKEN
-PUSH_ADMIN_TOKEN
+NEXT_PUBLIC_APP_URL
+QSTASH_URL
 QSTASH_TOKEN
 QSTASH_CURRENT_SIGNING_KEY
 QSTASH_NEXT_SIGNING_KEY
 ```
 
+Persistente storage, minimaal één van:
+
+```text
+BLOB_READ_WRITE_TOKEN
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+```
+
 Optioneel:
 
 ```text
-UPSTASH_REDIS_REST_URL
-UPSTASH_REDIS_REST_TOKEN
 CRON_SECRET
+PUSH_ADMIN_TOKEN
 FUELPLAN_FUELING_CORE_URL
+FUELPLAN_FORCE_PYTHON_SERVICE
 FUELPLAN_PYTHON_BIN
+VERCEL_AUTOMATION_BYPASS_SECRET
 ```
 
 ## Lokaal draaien
 
-```bash
+Vereisten:
+
+- Node.js 20
+- Python 3.12
+
+```powershell
 cd core/app
 npm install
+Copy-Item .env.example .env.local
 npm run dev
 ```
 
-Open daarna de URL die Next toont, meestal `http://localhost:3000`.
+Vul voor Web Push minimaal de VAPID-waarden in `.env.local` in. Open daarna de
+URL die Next toont, meestal `http://localhost:3000`.
 
 ## Checks
 
@@ -127,8 +145,9 @@ npm run build
 npm run test:e2e
 ```
 
-De GitHub Actions workflow draait dezelfde hoofdchecks voor pull requests en
-pushes naar `main`.
+De GitHub Actions workflow gebruikt `npm ci` en draait TypeScript, unit tests,
+Python core tests, build en Playwright e2e voor pull requests en pushes naar
+`main`.
 
 ## Deployment
 

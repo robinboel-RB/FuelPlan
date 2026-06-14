@@ -1,8 +1,7 @@
-"""Pure Python fueling engine translated from Energy_calculator.xlsx.
+"""Pure Python fueling engine.
 
-The formulas come from the "Uurlijkse calc" worksheet. The module has no Excel
-runtime dependency and keeps each spreadsheet formula as a named function so the
-sport-science assumptions are visible and testable.
+The module keeps each sport-science formula as a named function so assumptions
+are visible and testable.
 """
 
 from __future__ import annotations
@@ -123,18 +122,18 @@ class FuelingResultPoint:
 
 
 def calculate_lean_body_mass(inputs: UserStaticInputs) -> float:
-    """Excel C25: fat-free mass available for metabolism; output unit: kg."""
+    """Fat-free mass available for metabolism; output unit: kg."""
     return inputs.weight_kg * (1.0 - inputs.body_fat_pct)
 
 
 def calculate_bmr_active_katch(inputs: UserStaticInputs) -> float:
-    """Excel C27: Katch-McArdle BMR anchored on lean mass; output unit: kcal/day."""
+    """Katch-McArdle BMR anchored on lean mass; output unit: kcal/day."""
     lean_body_mass_kg = calculate_lean_body_mass(inputs)
     return BMR_KATCH_BASE_KCAL_DAY + BMR_KATCH_LBM_FACTOR * lean_body_mass_kg
 
 
 def calculate_bmr_base_mifflin(inputs: UserStaticInputs) -> float:
-    """Excel C28: Mifflin-St Jeor resting baseline; output unit: kcal/day."""
+    """Mifflin-St Jeor resting baseline; output unit: kcal/day."""
     gender_offset = (
         BMR_MIFFLIN_MALE_OFFSET
         if inputs.gender == MALE
@@ -150,7 +149,7 @@ def calculate_bmr_base_mifflin(inputs: UserStaticInputs) -> float:
 
 
 def calculate_carb_storage(inputs: UserStaticInputs) -> float:
-    """Excel C29: estimated glycogen/carbohydrate storage; output unit: g."""
+    """Estimated glycogen/carbohydrate storage; output unit: g."""
     lean_body_mass_kg = calculate_lean_body_mass(inputs)
     level_factor = LEVEL_CARB_STORAGE_FACTORS.get(
         inputs.running_level,
@@ -160,14 +159,14 @@ def calculate_carb_storage(inputs: UserStaticInputs) -> float:
 
 
 def calculate_composition_gap(inputs: UserStaticInputs) -> float:
-    """Excel C30: aligns Keytel rest energy to personal BMR; output unit: kJ/min."""
+    """Aligns Keytel rest energy to personal BMR; output unit: kJ/min."""
     bmr_active_kcal_day = calculate_bmr_active_katch(inputs)
     personal_resting_kj_min = bmr_active_kcal_day / MINUTES_PER_DAY * KJ_PER_KCAL
     return personal_resting_kj_min - calculate_keytel_at_rest(inputs)
 
 
 def calculate_personal_1_met(inputs: UserStaticInputs) -> float:
-    """Excel C31: athlete-specific 1 MET oxygen cost; output unit: ml/kg/min."""
+    """Athlete-specific 1 MET oxygen cost; output unit: ml/kg/min."""
     bmr_active_kcal_day = calculate_bmr_active_katch(inputs)
     return (
         bmr_active_kcal_day
@@ -179,18 +178,18 @@ def calculate_personal_1_met(inputs: UserStaticInputs) -> float:
 
 
 def calculate_hr_adjusted(point: SessionPoint) -> float:
-    """Excel N: removes heat-driven HR inflation above 24 C; output unit: bpm."""
+    """Remove heat-driven HR inflation above 24 C; output unit: bpm."""
     heat_delta_c = max(0.0, point.temperature_c - HR_TEMP_THRESHOLD_C)
     return point.heart_rate * (1.0 - HR_TEMP_CORRECTION_PER_C * heat_delta_c)
 
 
 def calculate_speed_m_per_min(point: SessionPoint) -> float:
-    """Excel O: converts pace to running speed; output unit: m/min."""
+    """Convert pace to running speed; output unit: m/min."""
     return 1000.0 / point.pace_min_per_km
 
 
 def calculate_economy_decay(point: SessionPoint) -> float:
-    """Excel P: fatigue and vertical-load cost multiplier; output unit: factor."""
+    """Fatigue and vertical-load cost multiplier; output unit: factor."""
     hour = point.minute / 60.0
 
     if hour < 12.0:
@@ -223,7 +222,7 @@ def calculate_minetti_base(
     personal_1_met: float,
     economy_decay: float,
 ) -> float:
-    """Excel R: slope/terrain transport cost before speed scaling; output unit: J/kg/m."""
+    """Slope/terrain transport cost before speed scaling; output unit: J/kg/m."""
     slope = point.slope
     return (
         MINETTI_P5 * slope**5
@@ -236,7 +235,7 @@ def calculate_minetti_base(
 
 
 def calculate_rer_base(inputs: UserStaticInputs, heart_rate: float) -> float:
-    """Excel X base term: HR reserve maps intensity to RER; output unit: ratio."""
+    """HR reserve maps intensity to RER; output unit: ratio."""
     return max(
         MIN_RER,
         MIN_RER
@@ -251,7 +250,7 @@ def calculate_rer_dynamic(
     point: SessionPoint,
     previous_carb_reservoir_with_eating: float | None,
 ) -> float:
-    """Excel X: glycogen pressure lowers carbohydrate share; output unit: ratio."""
+    """Glycogen pressure lowers carbohydrate share; output unit: ratio."""
     rer_base = calculate_rer_base(inputs, point.heart_rate)
 
     if previous_carb_reservoir_with_eating is None:
@@ -266,7 +265,7 @@ def calculate_rer_dynamic(
 
 
 def calculate_fuel_factor(rer_dynamic: float, rer_base: float) -> float:
-    """Excel S: adjusts Keytel for current substrate mix; output unit: factor."""
+    """Adjust Keytel for current substrate mix; output unit: factor."""
     return (WEIR_RER_FACTOR * rer_dynamic + WEIR_BASE) / (
         WEIR_RER_FACTOR * rer_base + WEIR_BASE
     )
@@ -277,7 +276,7 @@ def calculate_keytel(
     hr_adjusted: float,
     composition_gap: float,
 ) -> float:
-    """Excel T: HR/VO2 biometric energy estimate; output unit: kJ/min."""
+    """HR/VO2 biometric energy estimate; output unit: kJ/min."""
     if inputs.gender == MALE:
         keytel = (
             KEYTEL_MALE_BASE
@@ -304,24 +303,24 @@ def calculate_minetti_corrected(
     minetti_base: float,
     weight_kg: float,
 ) -> float:
-    """Excel V: external running cost scaled by speed/body mass; output unit: kJ/min."""
+    """External running cost scaled by speed/body mass; output unit: kJ/min."""
     _ = point
     return speed_m_per_min * minetti_base * weight_kg / 1000.0
 
 
 def calculate_keytel_corrected(fuel_factor: float, keytel: float) -> float:
-    """Excel W: Keytel after RER fuel-factor correction; output unit: kJ/min."""
+    """Keytel after RER fuel-factor correction; output unit: kJ/min."""
     return fuel_factor * keytel
 
 
 def calculate_carbs_per_min(dominant_energy_kj_min: float, rer: float) -> float:
-    """Excel Y: carbohydrate burn from dominant engine and RER; output unit: g/min."""
+    """Carbohydrate burn from dominant engine and RER; output unit: g/min."""
     carb_share = (rer - MIN_RER) / RER_SPAN
     return dominant_energy_kj_min * carb_share / CARB_ENERGY_KJ_PER_G
 
 
 def calculate_kcal_per_min(dominant_energy_kj_min: float) -> float:
-    """Excel AC increment: converts dominant kJ to kcal; output unit: kcal/min."""
+    """Convert dominant kJ to kcal; output unit: kcal/min."""
     return dominant_energy_kj_min / KJ_PER_KCAL
 
 
@@ -330,7 +329,7 @@ def calculate_fueling_plan(
     session_points: list[SessionPoint],
     carb_trigger_size_g: float = DEFAULT_CARB_TRIGGER_SIZE_G,
 ) -> dict[str, Any]:
-    """Excel rows 3+: runs the minute chain and AF carb triggers; output unit: dict."""
+    """Run the minute chain and carb triggers; output unit: dict."""
     inputs = validate_user_inputs(user_inputs)
 
     if carb_trigger_size_g <= 0:
@@ -386,7 +385,7 @@ def calculate_fueling_plan(
         carbs_g_per_min = calculate_carbs_per_min(dominant_energy_kj_min, rer)
         current_cumulative_carbs_g = previous_cumulative_carbs_g + carbs_g_per_min
 
-        # Excel AE/AF: compare MOD(previous cumulative, 30) to MOD(current, 30).
+        # Compare modulo rollover to detect each carbohydrate trigger threshold.
         previous_modulo = previous_cumulative_carbs_g % carb_trigger_size_g
         current_modulo = current_cumulative_carbs_g % carb_trigger_size_g
         if previous_modulo > current_modulo:
@@ -442,7 +441,7 @@ def calculate_fueling_plan(
 
 
 def calculate_keytel_at_rest(inputs: UserStaticInputs) -> float:
-    """Excel C30 rest term: Keytel at resting HR; output unit: kJ/min."""
+    """Keytel at resting HR; output unit: kJ/min."""
     if inputs.gender == MALE:
         return (
             KEYTEL_MALE_BASE
@@ -462,7 +461,7 @@ def calculate_keytel_at_rest(inputs: UserStaticInputs) -> float:
 
 
 def validate_user_inputs(inputs: UserStaticInputs) -> UserStaticInputs:
-    """Excel Section 1: validates static athlete inputs; output unit: UserStaticInputs."""
+    """Validate static athlete inputs; output unit: UserStaticInputs."""
     if inputs.weight_kg <= 0:
         raise ValueError("weight_kg must be > 0")
     if inputs.height_m <= 0:
@@ -497,7 +496,6 @@ def validate_user_inputs(inputs: UserStaticInputs) -> UserStaticInputs:
 
 
 def validate_session_point(point: SessionPoint) -> None:
-    """Excel dynamic rows: validates watch/session inputs; output unit: None."""
+    """Validate watch/session inputs; output unit: None."""
     if point.pace_min_per_km <= 0:
         raise ValueError(f"pace_min_per_km must be > 0 at minute {point.minute}")
-

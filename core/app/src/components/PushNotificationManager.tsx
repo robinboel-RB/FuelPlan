@@ -6,7 +6,7 @@ import { getPushAuthHeaders } from "@/lib/push/clientIdentity";
 type PushStatus =
   | "unsupported"
   | "install-required"
-  | "permission-default"
+  | "permission-needed"
   | "permission-denied"
   | "subscribed"
   | "unsubscribed"
@@ -32,16 +32,19 @@ interface PushApiSummary {
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
 
 export function PushNotificationManager() {
-  const [status, setStatus] = useState<PushStatus>("permission-default");
+  const [status, setStatus] = useState<PushStatus>("permission-needed");
   const [message, setMessage] = useState("Push status wordt gecontroleerd.");
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [isBusy, setIsBusy] = useState(false);
-  const [hasSeenPrePermission, setHasSeenPrePermission] = useState(false);
   const [serverStorageMode, setServerStorageMode] = useState<string>("unknown");
   const [hasServerSubscription, setHasServerSubscription] = useState(false);
+  const [platform, setPlatform] = useState<PushPlatform>("unknown");
 
-  const platform = useMemo(() => detectPlatform(), []);
   const support = useMemo(() => getPushSupport(platform), [platform]);
+
+  useEffect(() => {
+    setPlatform(detectPlatform());
+  }, []);
 
   useEffect(() => {
     if (!support.isSupported) {
@@ -60,17 +63,8 @@ export function PushNotificationManager() {
   }, [support.isSupported, support.reason, support.status]);
 
   const enablePush = async () => {
-    if (!hasSeenPrePermission) {
-      setHasSeenPrePermission(true);
-      setStatus("permission-default");
-      setMessage(
-        "FuelPlan vraagt hierna browser permission. Sta meldingen toe om live alerts via je telefoon en horloge te testen."
-      );
-      return;
-    }
-
     setIsBusy(true);
-    setMessage("Web Push permission aanvragen.");
+    setMessage("Web Push toestemming aanvragen.");
 
     try {
       if (!support.isSupported) {
@@ -95,7 +89,7 @@ export function PushNotificationManager() {
       }
 
       if (permission !== "granted") {
-        setStatus("permission-default");
+        setStatus("permission-needed");
         setMessage("Zet notificaties aan om live fueling alerts te testen.");
         return;
       }
@@ -239,10 +233,10 @@ export function PushNotificationManager() {
         updateServerState(response);
       }
 
-      setStatus(Notification.permission === "default" ? "permission-default" : "unsubscribed");
+      setStatus(Notification.permission === "default" ? "permission-needed" : "unsubscribed");
       setMessage(
         Notification.permission === "default"
-          ? "Zet Web Push aan om achtergrondmeldingen via Vercel te testen."
+          ? "Zet Web Push aan om fueling alerts op je telefoon te ontvangen."
           : "Push is toegestaan, maar er is geen actieve subscription."
       );
     } catch (error) {
@@ -259,7 +253,7 @@ export function PushNotificationManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
-            Niveau 2 Web Push status
+            Web Push setup
           </div>
           <div className={`mt-2 w-fit rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${statusClassName}`}>
             {formatStatus(status)}
@@ -277,8 +271,8 @@ export function PushNotificationManager() {
           </p>
           {serverStorageMode === "blob" ? (
             <p className="mt-2 max-w-xl text-xs leading-5 text-emerald-200">
-              Blob storage is actief. Niveau 2 blijft persistent over Vercel
-              cold starts heen.
+              Blob storage is actief. Alerts blijven persistent over Vercel cold
+              starts heen.
             </p>
           ) : null}
           {serverStorageMode === "memory" ? (
@@ -301,24 +295,28 @@ export function PushNotificationManager() {
             disabled={isBusy || status === "unsupported" || status === "permission-denied" || status === "install-required"}
             className="rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {hasSeenPrePermission ? "Enable Web Push" : "Prepare Web Push"}
+            Enable Web Push notification
           </button>
-          <button
-            type="button"
-            onClick={sendTestPush}
-            disabled={isBusy || status !== "subscribed"}
-            className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            Send Web Push test
-          </button>
-          <button
-            type="button"
-            onClick={disablePush}
-            disabled={isBusy || !subscription}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            Disable Web Push
-          </button>
+          {status === "subscribed" ? (
+            <>
+              <button
+                type="button"
+                onClick={sendTestPush}
+                disabled={isBusy}
+                className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Send test push
+              </button>
+              <button
+                type="button"
+                onClick={disablePush}
+                disabled={isBusy || !subscription}
+                className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Disable Web Push
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </section>
@@ -396,7 +394,7 @@ function getPushSupport(platform: PushPlatform): {
     };
   }
 
-  return { isSupported: true, reason: "", status: "permission-default" };
+  return { isSupported: true, reason: "", status: "permission-needed" };
 }
 
 function detectPlatform(): PushPlatform {
@@ -529,8 +527,8 @@ function formatStatus(status: PushStatus) {
       return "unsupported";
     case "install-required":
       return "install required";
-    case "permission-default":
-      return "permission default";
+    case "permission-needed":
+      return "permission needed";
     case "permission-denied":
       return "permission denied";
     case "subscribed":
@@ -547,7 +545,7 @@ function resolveStatusClassName(status: PushStatus) {
     return "border-emerald-400/40 bg-emerald-400/10 text-emerald-200";
   }
 
-  if (status === "permission-default" || status === "unsubscribed" || status === "install-required") {
+  if (status === "permission-needed" || status === "unsubscribed" || status === "install-required") {
     return "border-amber-400/40 bg-amber-400/10 text-amber-200";
   }
 

@@ -2,10 +2,17 @@
 
 Next.js app, PWA, Web Push routes en deploybare Python fueling core.
 
-## Belangrijke scripts
+## Vereisten
+
+- Node.js 20
+- Python 3.12
+
+## Belangrijke commando's
 
 ```bash
+npm install
 npm run dev
+npx tsc --noEmit
 npm run build
 npm run test:unit
 npm run test:python
@@ -61,7 +68,13 @@ Memory is alleen geschikt voor lokale development.
 
 ## Environment
 
-Gebruik `.env.example` als startpunt. Minimaal voor echte Web Push:
+Gebruik `.env.example` als startpunt:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+Minimaal voor Web Push:
 
 ```text
 NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -72,9 +85,31 @@ VAPID_SUBJECT
 Voor persistente push/session scheduling:
 
 ```text
-BLOB_READ_WRITE_TOKEN
-PUSH_ADMIN_TOKEN
+NEXT_PUBLIC_APP_URL
+QSTASH_URL
 QSTASH_TOKEN
 QSTASH_CURRENT_SIGNING_KEY
 QSTASH_NEXT_SIGNING_KEY
+```
+
+Persistente storage, minimaal één van:
+
+```text
+BLOB_READ_WRITE_TOKEN
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
+```
+
+In productie vereist niveau 2 persistente storage via Vercel Blob of Upstash
+Redis REST.
+
+Optioneel:
+
+```text
+CRON_SECRET
+PUSH_ADMIN_TOKEN
+FUELPLAN_FUELING_CORE_URL
+FUELPLAN_FORCE_PYTHON_SERVICE
+FUELPLAN_PYTHON_BIN
+VERCEL_AUTOMATION_BYPASS_SECRET
 ```

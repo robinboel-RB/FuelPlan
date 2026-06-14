@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -19,9 +19,10 @@ export function PwaInstallPrompt() {
     useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [message, setMessage] = useState("Installatiestatus wordt gecontroleerd.");
-  const platform = useMemo(() => detectInstallPlatform(), []);
+  const [platform, setPlatform] = useState("unknown");
 
   useEffect(() => {
+    setPlatform(detectInstallPlatform());
     setIsInstalled(isStandaloneDisplay());
 
     const handleBeforeInstallPrompt = (event: Event) => {
